@@ -1,6 +1,10 @@
 body {
-  font-family: Arial, sans-serif;
-  padding: 40px;
+    background: #b3e4b3;
+    color: brown;
+    text-align: left;
+    font-size: 25px;
+    font-family: Arial, sans-serif;
+    padding: 40px;
 }
 
 form {

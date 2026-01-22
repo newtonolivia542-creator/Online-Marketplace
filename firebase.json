@@ -4,6 +4,9 @@
       "dataDir": "dataconnect/.dataconnect/pgliteData"
     }
   },
+  "scripts": {
+  "build": "your-build-command"
+},
   "dataconnect": {
     "source": "dataconnect"
   },
@@ -19,6 +22,7 @@
         "source": "**",
         "destination": "/index.html"
       }
+
     ]
   }
 }

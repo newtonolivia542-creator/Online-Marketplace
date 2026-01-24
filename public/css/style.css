@@ -1,8 +1,8 @@
 body {
-  background-color: pink;
-  color: #e9c4c4;
+  background-color: lightgray;
+  color: rgb(13, 12, 12);
   text-align: left;
-  font-size: 25px;
+  font-size: 15px;
   font-family: Arial, sans-serif;
   padding: 40px;
 }
@@ -13,6 +13,6 @@ form {
 
 input, select, button {
   width: 100%;
-  margin: 10px 0;
+  margin: 20px 0;
   padding: 8px;
 }

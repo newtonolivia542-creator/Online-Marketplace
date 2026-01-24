@@ -1,10 +1,10 @@
 body {
-    background: hwb(120 70% 11%);
-    color: #e9c4c4;
-    text-align: left;
-    font-size: 25px;
-    font-family: Arial, sans-serif;
-    padding: 40px;
+  background-color: pink;
+  color: #e9c4c4;
+  text-align: left;
+  font-size: 25px;
+  font-family: Arial, sans-serif;
+  padding: 40px;
 }
 
 form {

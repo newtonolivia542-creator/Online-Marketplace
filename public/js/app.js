@@ -1,16 +1,16 @@
-//import { auth, db } from "./firebase.js";
-//import {
-  //createUserWithEmailAndPassword,
-  //signInWithEmailAndPassword,
-  //onAuthStateChanged,
- // signOut
-//} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { auth, db } from "./firebase.js";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-//import {
-  //doc,
-  //setDoc,
-  //getDoc
-//} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+  doc,
+  setDoc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 /* REGISTER */
 const registerForm = document.getElementById("registerForm");

@@ -54,14 +54,14 @@ if (loginForm) {
 }
 
 /* AUTH STATE */
-onAuthStateChanged(auth, async (user) => {
+//onAuthStateChanged(auth, async (user) => {
   if (user && document.getElementById("welcome")) {
     const userDoc = await getDoc(doc(db, "users", user.uid));
     const role = userDoc.data().role;
     document.getElementById("welcome").innerText =
       `Welcome ${user.email} (${role})`;
   }
-});
+//});
 
 /* LOGOUT */
 const logoutBtn = document.getElementById("logoutBtn");

@@ -57,10 +57,12 @@ if (loginForm) {
 //onAuthStateChanged(auth, async (user) => {
   if (user && document.getElementById("welcome")) {
     const userDoc = await getDoc(doc(db, "users", user.uid));
-    const role = userDoc.data().role;
-    document.getElementById("welcome").innerText =
+    if (userDoc.exists()) {
+      const role = userDoc.data().role;
+      document.getElementById("welcome").innerText =
       `Welcome ${user.email} (${role})`;
-  }
+   }
+}
 //});
 
 /* LOGOUT */

@@ -1,8 +1,17 @@
 body {
-  background-color: lightgray;
+  background-image: url('../images/Newton-O.ART210Project8g.gif');
   color: rgb(13, 12, 12);
   text-align: left;
   font-size: 15px;
   font-family: Arial, sans-serif;
   padding: 40px;
+  }
+    
+form { 
+  max-width: 300px;   
+}  
+input, select, button { 
+  width: 100%;
+  margin: 20px 0;
+  padding: 8px;   
 }

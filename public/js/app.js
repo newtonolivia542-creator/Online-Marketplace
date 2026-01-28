@@ -54,18 +54,34 @@ if (loginForm) {
 }
 
 /* AUTH STATE */
+/* AUTH STATE */
 onAuthStateChanged(auth, async (user) => {
-  if (user && document.getElementById("welcome")) {
+  const sellerSection = document.getElementById("seller-section");
+  const welcomeElement = document.getElementById("welcome");
+  
+  if (user) {
     try {
       const userDoc = await getDoc(doc(db, "users", user.uid));
       if (userDoc.exists()) {
         const role = userDoc.data().role;
-        document.getElementById("welcome").innerText = `Welcome ${user.email} (${role})`;
-      } else {
-        document.getElementById("welcome").innerText = `Welcome ${user.email}`;
+        
+        // Only update 'welcome' if it exists on this specific page
+        if (welcomeElement) {
+          welcomeElement.innerText = `Welcome ${user.email} (${role})`;
+        }
+
+        // Only update 'sellerSection' if it exists on this specific page
+        if (role === "seller" && sellerSection) {
+          sellerSection.style.display = "block";
+        }
       }
-    } catch (error) {
-      console.error("Error fetching user role:", error);
+    } catch (err) {
+      console.error("Error fetching user data:", err);
+    }
+  } else {
+    // Safety check for logout state
+    if (sellerSection) {
+      sellerSection.style.display = "none";
     }
   }
 });

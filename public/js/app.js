@@ -54,15 +54,21 @@ if (loginForm) {
 }
 
 /* AUTH STATE */
-//onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async (user) => {
   if (user && document.getElementById("welcome")) {
-    const userDoc = await getDoc(doc(db, "users", user.uid));
-    if (userDoc.exists()) {
-      const role = userDoc.data().role;
-      document.getElementById("welcome").innerText =
-      `Welcome ${user.email} (${role})`;
-   }
-}
+    try {
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists()) {
+        const role = userDoc.data().role;
+        document.getElementById("welcome").innerText = `Welcome ${user.email} (${role})`;
+      } else {
+        document.getElementById("welcome").innerText = `Welcome ${user.email}`;
+      }
+    } catch (error) {
+      console.error("Error fetching user role:", error);
+    }
+  }
+});
 //});
 
 /* LOGOUT */

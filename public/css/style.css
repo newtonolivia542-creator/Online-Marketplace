@@ -1,11 +1,18 @@
 body {
   background-image: url('../images/Newton-O.ART210Project8g.gif');
-  color: rgb(13, 12, 12);
+  background-repeat: repeat-x; /* Repeats only horizontally */
+  background-size: 50% 100vh;  /* Width is 50%, Height is 100% of viewport */
+  background-attachment: fixed;
+  color: rgba(218, 231, 70, 0.812);
   text-align: left;
-  font-size: 15px;
+  font-size: 35px;
   font-family: Arial, sans-serif;
   padding: 40px;
   }
+
+#seller-section{
+  display: block;
+}
     
 form { 
   max-width: 300px;   

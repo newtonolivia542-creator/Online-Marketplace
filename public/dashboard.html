@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Seller Dashboard - Marketly</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+
+<header style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: #eee;">
+  <h1>Seller Dashboard</h1>
+  <nav>
+    <a href="index.html">View Shop</a> | 
+    <button id="logoutBtn">Logout</button>
+  </nav>
+</header>
+
+<main style="padding: 20px;">
+  <section id="stats-summary">
+    <h2>Welcome Back, Seller!</h2>
+    <p>Manage your inventory and track your sales here.</p>
+  </section>
+
+  <hr>
+
+  <section id="seller-upload-form" style="max-width: 500px; border: 1px solid #ccc; padding: 20px; border-radius: 8px;">
+    <h3>Add a New Product</h3>
+    <p style="font-size: 0.9em; color: #666;">Fill in the details below to list your item on the marketplace.</p>
+    
+    <form id="productForm">
+      <label for="pName">Product Name</label><br>
+      <input type="text" id="pName" placeholder="e.g. Vintage Leather Bag" required style="width: 100%; margin-bottom: 15px;" />
+      
+      <label for="pPrice">Price ($)</label><br>
+      <input type="number" id="pPrice" placeholder="0.00" step="0.01" required style="width: 100%; margin-bottom: 15px;" />
+      
+      <label for="pDesc">Product Description</label><br>
+      <textarea id="pDesc" placeholder="Describe your item..." style="width: 100%; height: 100px; margin-bottom: 15px;"></textarea>
+      
+      <label for="pCategory">Category</label><br>
+      <select id="pCategory" style="width: 100%; margin-bottom: 20px;">
+        <option value="electronics">Electronics</option>
+        <option value="fashion">Fashion</option>
+        <option value="home">Home & Garden</option>
+        <option value="other">Other</option>
+      </select>
+
+      <button type="submit" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; cursor: pointer; width: 100%;">
+        Post to Marketplace
+      </button>
+    </form>
+  </section>
+
+  <section id="my-listings" style="margin-top: 40px;">
+    <h3>Your Active Listings</h3>
+    <div id="sellerProducts">
+      <p>Loading your products...</p>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="../js/app.js"></script>
+</body>
+</html>

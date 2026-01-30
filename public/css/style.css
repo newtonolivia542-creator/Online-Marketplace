@@ -9,11 +9,8 @@ body {
   font-family: Arial, sans-serif;
   padding: 40px;
   }
-
-#seller-section{
-  display: block;
-}
-    
+  
+  
 form { 
   max-width: 300px;   
 }  
@@ -21,4 +18,34 @@ input, select, button {
   width: 100%;
   margin: 20px 0;
   padding: 8px;   
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* Professional Button */
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+h1, h2, h3 {
+  color: hsl(114, 88%, 43%);
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+h1 { font-size: 2.5rem; font-weight: 800; }
+h2 { font-size: 1.8rem; font-weight: 700; }
+
+p {
+  margin-bottom: 1.5rem;
 }

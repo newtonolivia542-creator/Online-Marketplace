@@ -1,9 +1,6 @@
 body {
-  background-image: url('../images/Newton-O.ART210Project8g.gif');
-  background-repeat: repeat-x; /* Repeats only horizontally */
-  background-size: 50% 100vh;  /* Width is 50%, Height is 100% of viewport */
-  background-attachment: fixed;
-  color: rgba(218, 231, 70, 0.812);
+  background:rgb(80, 238, 63);
+  color: black
   text-align: left;
   font-size: 35px;
   font-family: Arial, sans-serif;

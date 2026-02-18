@@ -1,0 +1,20 @@
+{
+  "name": "online-marketplace-1",
+  "version": "1.0.0",
+  "description": "A Platform and App for America Local Business Online Shopping",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/newtonolivia542-creator/Online-Marketplace.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/newtonolivia542-creator/Online-Marketplace/issues"
+  },
+  "homepage": "https://github.com/newtonolivia542-creator/Online-Marketplace#readme"
+}

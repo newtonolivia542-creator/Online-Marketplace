@@ -78,7 +78,8 @@ onAuthStateChanged(auth, async (user) => {
       window.location.href = "login.html";
     }
   }
-});
+  });
+
 
 /* PRODUCT UPLOAD (For Dashboard) */
 const productForm = document.getElementById("productForm");

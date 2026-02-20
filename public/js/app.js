@@ -11,10 +11,15 @@ import {
   setDoc,
   getDoc,
   addDoc,
-  collection
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc,
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-/* REGISTER */
+/* ================= REGISTER ================= */
 const registerForm = document.getElementById("registerForm");
 if (registerForm) {
   registerForm.addEventListener("submit", async (e) => {
@@ -26,12 +31,22 @@ if (registerForm) {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       await setDoc(doc(db, "users", userCred.user.uid), { email, role });
-      window.location.href = (role === "seller") ? "dashboard.html" : "index.html";
-    } catch (err) { alert(err.message); }
+
+      if (role === "seller") {
+        window.location.href = "seller dashboard.html";
+      } else if (role === "buyer") {
+        window.location.href = "buyer dashboard.html";
+      } else if (role === "admin") {
+        window.location.href = "admin.html";
+      }
+
+    } catch (err) {
+      alert(err.message);
+    }
   });
 }
 
-/* LOGIN */
+/* ================= LOGIN ================= */
 const loginForm = document.getElementById("loginForm");
 if (loginForm) {
   loginForm.addEventListener("submit", async (e) => {
@@ -42,57 +57,86 @@ if (loginForm) {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
-      
+
       if (userDoc.exists()) {
         const role = userDoc.data().role;
-        window.location.href = (role === "seller") ? "dashboard.html" : "index.html";
+
+        if (role === "seller") {
+          window.location.href = "seller dashboard.html";
+        } else if (role === "buyer") {
+          window.location.href = "buyer dashboard.html";
+        } else if (role === "admin") {
+          window.location.href = "admin.html";
+        }
       }
-    } catch (err) { alert(err.message); }
+    } catch (err) {
+      alert(err.message);
+    }
   });
 }
 
-/* AUTH STATE & SECURITY */
+/* ================= AUTH STATE ================= */
 onAuthStateChanged(auth, async (user) => {
   const currentPage = window.location.pathname;
 
   if (user) {
     const userDoc = await getDoc(doc(db, "users", user.uid));
-    if (userDoc.exists()) {
-      const role = userDoc.data().role;
-      
-      // PROTECTION: Kicks buyers out of the dashboard
-      if (currentPage.includes("dashboard.html") && role !== "seller") {
-        window.location.href = "index.html";
-      }
-      
-      // UI Updates
-      const welcome = document.getElementById("welcome");
-      if (welcome) welcome.innerText = `Logged in as: ${user.email} (${role})`;
-      if (document.getElementById("logoutBtn")) document.getElementById("logoutBtn").style.display = "block";
+    if (!userDoc.exists()) return;
+
+    const role = userDoc.data().role;
+
+    // 🔐 PAGE PROTECTION
+    if (currentPage.includes("seller dashboard.html") && role !== "seller") {
+      window.location.href = "buyer dashboard.html";
+      return;
     }
 
-  /* AUTH STATE & SECURITY */
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    try {
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (userDoc.exists()) {
-        const role = userDoc.data().role;
-        // ... rest of your logic
-      }
-    } catch (error) {
-      console.error("Error fetching user role:", error);
+    if (currentPage.includes("buyer dashboard.html") && role !== "buyer") {
+      window.location.href = "seller dashboard.html";
+      return;
+    }
+
+    if (currentPage.includes("admin.html") && role !== "admin") {
+      window.location.href = "index.html";
+      return;
+    }
+
+    // 👋 UI
+    const welcome = document.getElementById("welcome");
+    if (welcome) welcome.innerText = `Logged in as: ${user.email} (${role})`;
+
+    const logoutBtn = document.getElementById("logoutBtn");
+    if (logoutBtn) logoutBtn.style.display = "block";
+
+    // 🚀 LOAD FEATURES
+    if (role === "buyer") {
+      loadProducts();
+      loadMyOrders();
+    }
+
+    if (role === "seller") {
+      loadSellerProducts();
+      loadSellerOrders();
+    }
+
+  } else {
+    //  NOT LOGGED IN
+    if (
+      currentPage.includes("buyer dashboard.html") ||
+      currentPage.includes("seller dashboard.html") ||
+      currentPage.includes("admin.html")
+    ) {
+      window.location.href = "index.html";
     }
   }
 });
 
-
-/* PRODUCT UPLOAD (For Dashboard) */
+/* ================= PRODUCT UPLOAD (SELLER) ================= */
 const productForm = document.getElementById("productForm");
 if (productForm) {
   productForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    
+
     const productData = {
       name: document.getElementById("pName").value,
       price: Number(document.getElementById("pPrice").value),
@@ -103,7 +147,7 @@ if (productForm) {
 
     try {
       await addDoc(collection(db, "products"), productData);
-      alert("Product posted successfully!");
+      alert("Product posted!");
       productForm.reset();
       loadSellerProducts();
     } catch (err) {
@@ -156,9 +200,32 @@ function setupBuyButtons() {
         });
         alert("Order placed!");
         loadMyOrders();
-    } catch (err) {
-      alert("Error uploading: " + err.message);
-    }
+      } catch (err) {
+        alert("Order failed: " + err.message);
+      }
+    });
+  });
+}
+
+/* ================= CUSTOMER ORDERS ================= */
+async function loadMyOrders() {
+  const orderList = document.getElementById("orderList");
+  if (!orderList || !auth.currentUser) return;
+
+  const q = query(collection(db, "orders"), where("userId", "==", auth.currentUser.uid));
+  const snapshot = await getDocs(q);
+
+  orderList.innerHTML = "";
+  snapshot.forEach(docSnap => {
+    const order = docSnap.data();
+    orderList.innerHTML += `
+      <li>
+        Product ID: ${order.productId} |
+        Status: ${order.status}
+      </li>
+    `;
+  });
+}
 
 /* ================= SELLER PRODUCTS ================= */
 async function loadSellerProducts() {
@@ -180,11 +247,49 @@ async function loadSellerProducts() {
   });
 }
 
-/* LOGOUT */
+window.deleteProduct = async (productId) => {
+  await deleteDoc(doc(db, "products", productId));
+  alert("Product deleted");
+  loadSellerProducts();
+};
+
+/* ================= SELLER ORDERS ================= */
+async function loadSellerOrders() {
+  const sellerOrders = document.getElementById("sellerOrders");
+  if (!sellerOrders || !auth.currentUser) return;
+
+  const q = query(collection(db, "orders"), where("sellerId", "==", auth.currentUser.uid));
+  const snapshot = await getDocs(q);
+
+  sellerOrders.innerHTML = "";
+  snapshot.forEach(docSnap => {
+    const order = docSnap.data();
+    sellerOrders.innerHTML += `
+      <li>
+        Order ${docSnap.id} |
+        Status: ${order.status}
+        <button onclick="markShipped('${docSnap.id}')">Ship</button>
+        <button onclick="markDelivered('${docSnap.id}')">Deliver</button>
+      </li>
+    `;
+  });
+};
+
+window.markShipped = async (orderId) => {
+  await updateDoc(doc(db, "orders", orderId), { status: "shipped" });
+  loadSellerOrders();
+};
+
+window.markDelivered = async (orderId) => {
+  await updateDoc(doc(db, "orders", orderId), { status: "delivered" });
+  loadSellerOrders();
+};
+
+/* ================= LOGOUT ================= */
 const logoutBtn = document.getElementById("logoutBtn");
 if (logoutBtn) {
   logoutBtn.addEventListener("click", async () => {
     await signOut(auth);
-    window.location.href = "login.html";
+    window.location.href = "index.html";
   });
 }

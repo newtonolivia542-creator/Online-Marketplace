@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Buyer Dashboard</title>
+</head>
+<body>
+
+<h2 id="welcome"></h2>
+<button id="logoutBtn" style="display:none;">Logout</button>
+
+<h1>Products</h1>
+<div id="productList">
+  <!-- Example product (normally loaded from Firestore) -->
+  <div>
+    <p>Sample Product</p>
+    <p>$10</p>
+    <button class="buyBtn" data-id="PRODUCT_ID" data-seller="SELLER_ID">Buy</button>
+  </div>
+</div>
+
+<h2>My Orders</h2>
+<ul id="orderList"></ul>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

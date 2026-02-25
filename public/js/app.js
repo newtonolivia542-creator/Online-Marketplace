@@ -135,6 +135,7 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 /* ================= PRODUCT UPLOAD (SELLER) ================= */
+
 const productForm = document.getElementById("productForm");
 if (productForm) {
   productForm.addEventListener("submit", async (e) => {
@@ -160,6 +161,7 @@ if (productForm) {
 }
 
 /* ================= LOAD PRODUCTS (BUYER) ================= */
+
 async function loadProducts() {
   const productList = document.getElementById("productList");
   if (!productList) return;

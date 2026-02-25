@@ -1,3 +1,6 @@
+import { sendPasswordResetEmail } from 
+"https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
 import { auth, db } from "./firebase.js";
 import {
   createUserWithEmailAndPassword,
@@ -291,5 +294,25 @@ if (logoutBtn) {
   logoutBtn.addEventListener("click", async () => {
     await signOut(auth);
     window.location.href = "index.html";
+  });
+}
+
+const resetBtn = document.getElementById("resetPasswordBtn");
+
+if (resetBtn) {
+  resetBtn.addEventListener("click", async () => {
+    const email = document.getElementById("email").value;
+
+    if (!email) {
+      alert("Please enter your email first.");
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      alert("Password reset email sent. Check your inbox.");
+    } catch (err) {
+      alert(err.message);
+    }
   });
 }

@@ -258,18 +258,23 @@ async function loadSellerProducts() {
   const myProducts = document.getElementById("myProducts");
   if (!myProducts || !auth.currentUser) return;
 
-  const q = query(collection(db, "products"), where("sellerId", "==", auth.currentUser.uid));
+  const q = query(
+    collection(db, "products"),
+    where("sellerId", "==", auth.currentUser.uid)
+  );
+
   const snapshot = await getDocs(q);
   myProducts.innerHTML = "";
+
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
 
-    // ✅ Only show products that are NOT sold
+    // Only show products that are NOT sold
     if (product.sold === true) return;
 
     myProducts.innerHTML += `
       <li>
-        ${product.name} - $${product.price}
+        <strong>${product.name}</strong> — $${product.price}
         <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
       </li>
     `;

@@ -260,10 +260,13 @@ async function loadSellerProducts() {
 
   const q = query(collection(db, "products"), where("sellerId", "==", auth.currentUser.uid));
   const snapshot = await getDocs(q);
-
   myProducts.innerHTML = "";
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
+
+    // ✅ Only show products that are NOT sold
+    if (product.sold === true) return;
+
     myProducts.innerHTML += `
       <li>
         ${product.name} - $${product.price}

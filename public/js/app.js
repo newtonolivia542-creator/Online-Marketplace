@@ -195,6 +195,9 @@ function setupBuyButtons() {
 
   buyButtons.forEach(btn => {
     btn.addEventListener("click", async () => {
+      const confirmBuy = confirm("Are you sure you want to buy this product?");
+      if (!confirmBuy) return;
+
       try {
         await addDoc(collection(db, "orders"), {
           productId: btn.dataset.id,
@@ -205,6 +208,7 @@ function setupBuyButtons() {
         });
         alert("Order placed!");
         loadMyOrders();
+        loadProducts();
       } catch (err) {
         alert("Order failed: " + err.message);
       }
@@ -223,6 +227,11 @@ async function loadMyOrders() {
   orderList.innerHTML = "";
   snapshot.forEach(docSnap => {
     const order = docSnap.data();
+
+    // Get product info
+    const productSnap = await getDoc(doc(db, "products", order.productId));
+    const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
+
     orderList.innerHTML += `
       <li>
         Product ID: ${order.productId} |

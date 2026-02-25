@@ -146,7 +146,8 @@ if (productForm) {
       price: Number(document.getElementById("pPrice").value),
       description: document.getElementById("pDesc").value,
       sellerId: auth.currentUser.uid,
-      createdAt: new Date()
+      createdAt: new Date(),
+      sold: false
     };
 
     try {
@@ -166,19 +167,22 @@ async function loadProducts() {
   const productList = document.getElementById("productList");
   if (!productList) return;
 
-  const snapshot = await getDocs(collection(db, "products"));
+  const q = query(collection(db, "products"), where("sold", "==", false));
+  const snapshot = await getDocs(q);
+
   productList.innerHTML = "";
 
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
+
     productList.innerHTML += `
       <div>
         <h3>${product.name}</h3>
         <p>$${product.price}</p>
         <p>${product.description}</p>
-        <button class="buyBtn"
-          data-id="${docSnap.id}"
-          data-seller="${product.sellerId}">
+        <button type="button" class="buyBtn"
+        data-id="${docSnap.id}"
+        data-seller="${product.sellerId}">
           Buy
         </button>
       </div>
@@ -206,7 +210,11 @@ function setupBuyButtons() {
           status: "pending",
           createdAt: new Date()
         });
-        alert("Order placed!");
+        await updateDoc(doc(db, "products", btn.dataset.id), {
+          sold: true
+        });
+
+        alert("Order placed successfully!");
         loadMyOrders();
         loadProducts();
       } catch (err) {
@@ -225,7 +233,8 @@ async function loadMyOrders() {
   const snapshot = await getDocs(q);
 
   orderList.innerHTML = "";
-  snapshot.forEach(docSnap => {
+
+  for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
 
     // Get product info
@@ -234,11 +243,14 @@ async function loadMyOrders() {
 
     orderList.innerHTML += `
       <li>
-        Product ID: ${order.productId} |
-        Status: ${order.status}
+        Product: <strong>${productName}</strong> |
+        Status: <strong>${order.status}</strong>
+        ${order.status === "pending" ? 
+          `<button onclick="cancelOrder('${docSnap.id}', '${order.productId}')">Cancel</button>` 
+          : ""}
       </li>
     `;
-  });
+  }
 }
 
 /* ================= SELLER PRODUCTS ================= */
@@ -297,6 +309,28 @@ window.markShipped = async (orderId) => {
 window.markDelivered = async (orderId) => {
   await updateDoc(doc(db, "orders", orderId), { status: "delivered" });
   loadSellerOrders();
+};
+
+/*=======CANCEL ORDER ========= */
+window.cancelOrder = async (orderId, productId) => {
+  const confirmCancel = confirm("Are you sure you want to cancel this order?");
+  if (!confirmCancel) return;
+
+  try {
+    // delete order
+    await deleteDoc(doc(db, "orders", orderId));
+
+    // mark product as not sold again
+    await updateDoc(doc(db, "products", productId), {
+      sold: false
+    });
+
+    alert("Order cancelled.");
+    loadMyOrders();
+    loadProducts(); // refresh store list
+  } catch (err) {
+    alert("Cancel failed: " + err.message);
+  }
 };
 
 /* ================= LOGOUT ================= */

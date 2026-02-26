@@ -29,7 +29,7 @@ import {
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-const storage = getStorage();
+//const storage = getStorage();
 
 /* ================= REGISTER ================= */
 const registerForm = document.getElementById("registerForm");
@@ -97,7 +97,7 @@ onAuthStateChanged(auth, async (user) => {
 
     const role = userDoc.data().role;
 
-    // 🔐 PAGE PROTECTION
+    // PAGE PROTECTION
     if (currentPage.includes("seller dashboard.html") && role !== "seller") {
       window.location.href = "buyer dashboard.html";
       return;
@@ -146,44 +146,43 @@ onAuthStateChanged(auth, async (user) => {
 
 /* ================= PRODUCT UPLOAD (SELLER) ================= */
 
+const storage = getStorage();
+
 const productForm = document.getElementById("productForm");
 if (productForm) {
   productForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const file = document.getElementById("pImage").files[0];
+    const fileInput = document.getElementById("pImage");
+    const file = fileInput.files[0];
+
     if (!file) {
-      alert("Please select an image.");
+      alert("Please choose an image");
       return;
     }
 
     const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
-
-    try {
-      // upload image
-      await uploadBytes(storageRef, file);
-
-      // get image URL
-      const imageURL = await getDownloadURL(storageRef);
+    await uploadBytes(storageRef, file);
+    const imageURL = await getDownloadURL(storageRef);
 
     const productData = {
       name: document.getElementById("pName").value,
       price: Number(document.getElementById("pPrice").value),
       description: document.getElementById("pDesc").value,
+      imageURL: imageURL,
       sellerId: auth.currentUser.uid,
-      createdAt: new Date(),
-      sold: false
+      createdAt: new Date()
     };
 
-      await addDoc(collection(db, "products"), productData);
-      alert("Product posted!");
-      productForm.reset();
-      loadSellerProducts();
-    } catch (err) {
-      alert("Upload failed: " + err.message);
-    }
+    await addDoc(collection(db, "products"), productData);
+
+    alert("Product posted!");
+    productForm.reset();
+
+ 
   });
 }
+
 
 /* ================= LOAD PRODUCTS (BUYER) ================= */
 
@@ -191,9 +190,7 @@ async function loadProducts() {
   const productList = document.getElementById("productList");
   if (!productList) return;
 
-  const q = query(collection(db, "products"), where("sold", "==", false));
-  const snapshot = await getDocs(q);
-
+  const snapshot = await getDocs(collection(db, "products"));
   productList.innerHTML = "";
 
   snapshot.forEach(docSnap => {
@@ -204,9 +201,10 @@ async function loadProducts() {
         <h3>${product.name}</h3>
         <p>$${product.price}</p>
         <p>${product.description}</p>
+        <img src="${product.imageUrl}" width="150">
         <button type="button" class="buyBtn"
-        data-id="${docSnap.id}"
-        data-seller="${product.sellerId}">
+          data-id="${docSnap.id}"
+          data-seller="${product.sellerId}">
           Buy
         </button>
       </div>
@@ -278,7 +276,10 @@ async function loadMyOrders() {
 }
 
 /* ================= SELLER PRODUCTS ================= */
-async function loadSellerProducts() {
+//import { collection, query, where, onSnapshot } 
+//from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+function loadSellerProducts() {
   const myProducts = document.getElementById("myProducts");
   if (!myProducts || !auth.currentUser) return;
 
@@ -287,21 +288,25 @@ async function loadSellerProducts() {
     where("sellerId", "==", auth.currentUser.uid)
   );
 
-  const snapshot = await getDocs(q);
-  myProducts.innerHTML = "";
+  onSnapshot(q, (snapshot) => {
+    myProducts.innerHTML = "";
 
-  snapshot.forEach(docSnap => {
-    const product = docSnap.data();
+    snapshot.forEach(docSnap => {
+      const product = docSnap.data();
 
-    // Only show products that are NOT sold
-    if (product.sold === true) return;
+      // Only show products that are NOT sold
+      if (product.sold === true) return;
 
-    myProducts.innerHTML += `
-      <li>
-        <strong>${product.name}</strong> — $${product.price}
-        <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
-      </li>
-    `;
+      myProducts.innerHTML += `
+        <li>
+          <strong>${product.name}</strong> — $${product.price}
+          <br>
+          <img src="${product.imageUrl}" width="100">
+          <br>
+          <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
+        </li>
+      `;
+    });
   });
 }
 
@@ -320,7 +325,8 @@ async function loadSellerOrders() {
   const snapshot = await getDocs(q);
 
   sellerOrders.innerHTML = "";
-  snapshot.forEach(docSnap => {
+
+  for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
 
     // get product info
@@ -329,14 +335,14 @@ async function loadSellerOrders() {
 
     sellerOrders.innerHTML += `
       <li>
-        Order ${docSnap.id} |
-        Status: ${order.status}
+        <strong>${productName}</strong> |
+        Status: <strong>${order.status}</strong>
         <button onclick="markShipped('${docSnap.id}')">Ship</button>
         <button onclick="markDelivered('${docSnap.id}')">Deliver</button>
       </li>
     `;
-  });
-};
+  }
+}
 
 window.markShipped = async (orderId) => {
   await updateDoc(doc(db, "orders", orderId), { status: "shipped" });

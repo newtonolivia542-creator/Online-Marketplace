@@ -19,7 +19,8 @@ import {
   where,
   getDocs,
   deleteDoc,
-  updateDoc
+  updateDoc,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
@@ -196,12 +197,15 @@ async function loadProducts() {
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
 
+    // hide sold products
+    if (product.sold === true) return;
+
     productList.innerHTML += `
       <div>
         <h3>${product.name}</h3>
         <p>$${product.price}</p>
         <p>${product.description}</p>
-        <img src="${product.imageUrl}" width="150">
+        <img src="${product.imageURL}" width="150">
         <button type="button" class="buyBtn"
           data-id="${docSnap.id}"
           data-seller="${product.sellerId}">
@@ -275,9 +279,7 @@ async function loadMyOrders() {
   }
 }
 
-/* ================= SELLER PRODUCTS ================= */
-//import { collection, query, where, onSnapshot } 
-//from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+/* ================= LOAD SELLER PRODUCTS ================= */
 
 function loadSellerProducts() {
   const myProducts = document.getElementById("myProducts");
@@ -294,26 +296,42 @@ function loadSellerProducts() {
     snapshot.forEach(docSnap => {
       const product = docSnap.data();
 
-      // Only show products that are NOT sold
+      // show ONLY active (not sold)
       if (product.sold === true) return;
 
       myProducts.innerHTML += `
         <li>
-          <strong>${product.name}</strong> — $${product.price}
-          <br>
-          <img src="${product.imageUrl}" width="100">
-          <br>
+          <strong>${product.name}</strong> — $${product.price}<br>
+          ${product.description}<br><br>
+          <img src="${product.imageURL}" width="120"><br><br>
           <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
         </li>
+        <hr>
       `;
     });
   });
 }
 
 window.deleteProduct = async (productId) => {
-  await deleteDoc(doc(db, "products", productId));
-  alert("Product deleted");
-  loadSellerProducts();
+  const confirmDelete = confirm("Are you sure you want to delete this product?");
+  if (!confirmDelete) return;
+
+  const productRef = doc(db, "products", productId);
+  const snap = await getDoc(productRef);
+
+  if (!snap.exists()) {
+    alert("Product not found.");
+    return;
+  }
+
+  // make sure seller owns it
+  if (snap.data().sellerId !== auth.currentUser.uid) {
+    alert("You are not allowed to delete this product.");
+    return;
+  }
+
+  await deleteDoc(productRef);
+  alert("Product deleted.");
 };
 
 /* ================= SELLER ORDERS ================= */

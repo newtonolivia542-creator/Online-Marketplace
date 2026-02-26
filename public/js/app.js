@@ -13,14 +13,23 @@ import {
   doc,
   setDoc,
   getDoc,
-  addDoc,
   collection,
+  addDoc,
   query,
   where,
   getDocs,
   deleteDoc,
   updateDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+const storage = getStorage();
 
 /* ================= REGISTER ================= */
 const registerForm = document.getElementById("registerForm");
@@ -120,6 +129,7 @@ onAuthStateChanged(auth, async (user) => {
     if (role === "seller") {
       loadSellerProducts();
       loadSellerOrders();
+      loadSoldProducts();
     }
 
   } else {
@@ -141,6 +151,21 @@ if (productForm) {
   productForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    const file = document.getElementById("pImage").files[0];
+    if (!file) {
+      alert("Please select an image.");
+      return;
+    }
+
+    const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+
+    try {
+      // upload image
+      await uploadBytes(storageRef, file);
+
+      // get image URL
+      const imageURL = await getDownloadURL(storageRef);
+
     const productData = {
       name: document.getElementById("pName").value,
       price: Number(document.getElementById("pPrice").value),
@@ -150,7 +175,6 @@ if (productForm) {
       sold: false
     };
 
-    try {
       await addDoc(collection(db, "products"), productData);
       alert("Product posted!");
       productForm.reset();
@@ -298,6 +322,11 @@ async function loadSellerOrders() {
   sellerOrders.innerHTML = "";
   snapshot.forEach(docSnap => {
     const order = docSnap.data();
+
+    // get product info
+    const productSnap = await getDoc(doc(db, "products", order.productId));
+    const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
+
     sellerOrders.innerHTML += `
       <li>
         Order ${docSnap.id} |
@@ -318,6 +347,33 @@ window.markDelivered = async (orderId) => {
   await updateDoc(doc(db, "orders", orderId), { status: "delivered" });
   loadSellerOrders();
 };
+
+/*============SOLD ITEMS HISTORY ===========*/
+async function loadSoldProducts() {
+  const soldList = document.getElementById("soldProducts");
+  if (!soldList || !auth.currentUser) return;
+
+  const q = query(
+    collection(db, "products"),
+    where("sellerId", "==", auth.currentUser.uid)
+  );
+
+  const snapshot = await getDocs(q);
+  soldList.innerHTML = "";
+
+  snapshot.forEach(docSnap => {
+    const product = docSnap.data();
+
+    // Only sold products
+    if (product.sold !== true) return;
+
+    soldList.innerHTML += `
+      <li>
+        ${product.name} — $${product.price}
+      </li>
+    `;
+  });
+}
 
 /*=======CANCEL ORDER ========= */
 window.cancelOrder = async (orderId, productId) => {

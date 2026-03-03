@@ -1,3 +1,4 @@
+let allProducts = [];
 import { sendPasswordResetEmail } from 
 "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -29,6 +30,8 @@ import {
   uploadBytes,
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+let allProducts = [];
 
 //const storage = getStorage();
 
@@ -197,26 +200,48 @@ async function loadProducts() {
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
 
-    // hide sold products
     if (product.sold === true) return;
 
+    allProducts.push({ id: docSnap.id, ...product });
+  });
+
+  displayProducts(allProducts);
+}
+
+function displayProducts(products) {
+  const productList = document.getElementById("productList");
+  productList.innerHTML = "";
+
+  products.forEach(product => {
     productList.innerHTML += `
       <div>
         <h3>${product.name}</h3>
-        <p>$${product.price}</p>
-        <p>${product.description}</p>
-        <img src="${product.imageURL}" width="150">
-        <button type="button" class="buyBtn"
-          data-id="${docSnap.id}"
-          data-seller="${product.sellerId}">
-          Buy
-        </button>
-      </div>
-      <hr>
+    <p class="price">$${product.price}</p>
+    <p class="desc">${product.description}</p>
+
+    <button class="buyBtn"
+      data-id="${product.id}"
+      data-seller="${product.sellerId}">
+      Buy
+    </button>
+  </div>
     `;
   });
 
   setupBuyButtons();
+}
+
+const searchBtn = document.getElementById("searchBtn");
+if (searchBtn) {
+  searchBtn.addEventListener("click", () => {
+    const term = document.getElementById("searchInput").value.toLowerCase();
+
+    const filtered = allProducts.filter(p =>
+      p.name.toLowerCase().includes(term)
+    );
+
+    displayProducts(filtered);
+  });
 }
 
 /* ================= BUY PRODUCT ================= */

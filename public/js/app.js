@@ -1,4 +1,3 @@
-let allProducts = [];
 import { sendPasswordResetEmail } from 
 "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -195,6 +194,7 @@ async function loadProducts() {
   if (!productList) return;
 
   const snapshot = await getDocs(collection(db, "products"));
+  allProducts = [];
   productList.innerHTML = "";
 
   snapshot.forEach(docSnap => {
@@ -214,8 +214,10 @@ function displayProducts(products) {
 
   products.forEach(product => {
     productList.innerHTML += `
-      <div>
-        <h3>${product.name}</h3>
+  <div class="product-card">
+    <img src="${product.imageURL}" class="product-img">
+
+    <h3>${product.name}</h3>
     <p class="price">$${product.price}</p>
     <p class="desc">${product.description}</p>
 
@@ -225,9 +227,9 @@ function displayProducts(products) {
       Buy
     </button>
   </div>
-    `;
-  });
-
+`;
+});
+  
   setupBuyButtons();
 }
 

@@ -1,10 +1,11 @@
 import { auth, db } from "./firebase.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import {
   collection,
   getDocs,
   doc,
-  getDoc
+  getDoc,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const userList = document.getElementById("userList");
@@ -39,12 +40,17 @@ onAuthStateChanged(auth, async (user) => {
 // ================= USERS =================
 async function loadUsers() {
   const snapshot = await getDocs(collection(db, "users"));
-  const userList = document.getElementById("userList");
-  userList.innerHTML = "";
+  const userList = document.getElementById("userList").querySelector("tbody");
+  userList.innerHTML = ""; // clear previous content
 
   snapshot.forEach(docSnap => {
     const user = docSnap.data();
-    userList.innerHTML += `<li>${user.email} (${user.role})</li>`;
+    userList.innerHTML += `
+      <tr>
+        <td>${user.email}</td>
+        <td>${user.role}</td>
+      </tr>
+    `;
   });
 }
 
@@ -109,10 +115,12 @@ async function loadOrders() {
     const sellerEmail = sellerSnap.exists() ? sellerSnap.data().email : "Unknown";
 
     orderList.innerHTML += `
-      <li>
-        Order: ${docSnap.id} |
-        Status: ${order.status}
-      </li>
+      <tr>
+        <td>${productName}</td>
+        <td>${buyerEmail}</td>
+        <td>${sellerEmail}</td>
+        <td>${order.status}</td>
+      </tr>
     `;
-  });
+  }
 }

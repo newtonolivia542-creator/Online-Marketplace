@@ -83,7 +83,7 @@ button {
 }
 
 button:hover {
-  background: #0843e3;
+  background: rgb(121, 227, 8);
 }
 
 /* SECONDARY BUTTON */

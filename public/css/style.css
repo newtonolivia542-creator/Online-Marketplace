@@ -11,6 +11,7 @@ body {
   background: #f4f6f9;
   color: #333;
   min-height: 100vh;
+  margin: center;
 }
 
 /* HEADER */
@@ -71,13 +72,14 @@ input:focus, select:focus, textarea:focus {
 /* BUTTONS */
 button {
   padding: 0.7rem;
-  background: #2563eb;
-  color: white;
+  background: hsl(105, 83%, 53%);
+  color: hsl(0, 85%, 8%);
   border: none;
-  border-radius: 5px;
   font-size: 1rem;
   cursor: pointer;
-  transition: 0.2s ease;
+  width: 200px;
+  margin: left;
+  display: block;
 }
 
 button:hover {
@@ -195,6 +197,9 @@ footer {
     background: #dc2626;
   }
   
+  #resetPasswordBtn {
+    background: #2563eb;
+  }
   /* Layout */
   main {
     padding: 20px;

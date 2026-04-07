@@ -127,6 +127,7 @@ onAuthStateChanged(auth, async (user) => {
     if (role === "buyer") {
       loadProducts();
       loadMyOrders();
+      loadCart();
     }
 
     if (role === "seller") {
@@ -174,6 +175,7 @@ if (productForm) {
       description: document.getElementById("pDesc").value,
       imageURL: imageURL,
       sellerId: auth.currentUser.uid,
+      category: document.getElementById("pCategory").value,
       createdAt: new Date()
     };
 
@@ -183,6 +185,23 @@ if (productForm) {
     productForm.reset();
 
  
+  });
+}
+
+/* =================LOAD CATEGORIES ON BUYER DASHBOARD =========*/
+
+const categoryFilter = document.getElementById("categoryFilter");
+
+if (categoryFilter) {
+  categoryFilter.addEventListener("change", () => {
+    const selected = categoryFilter.value;
+    
+    if (selected === "all") {
+      displayProducts(allProducts);
+    } else {
+      const filtered = allProducts.filter(p => p.category === selected);
+      displayProducts(filtered);
+    }
   });
 }
 
@@ -226,11 +245,18 @@ function displayProducts(products) {
       data-seller="${product.sellerId}">
       Buy
     </button>
+    <button class="viewBtn" onclick="window.location.href='product-detail.html?id=${product.id}'">
+      View
+    </button>
+    
+      <button class="addCartBtn" data-id="${product.id}">Add to Cart</button>
+    </div>
   </div>
 `;
 });
   
   setupBuyButtons();
+  setupAddCartButtons();
 }
 
 const searchBtn = document.getElementById("searchBtn");
@@ -277,6 +303,32 @@ function setupBuyButtons() {
   });
 }
 
+/* =============setupAddCartButtons ==========*/
+
+function setupAddCartButtons() {
+  const addCartButtons = document.querySelectorAll(".addCartBtn");
+
+  addCartButtons.forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const productId = btn.dataset.id;
+
+      try {
+        // Add to "carts" collection
+        await addDoc(collection(db, "carts"), {
+          productId: productId,
+          userId: auth.currentUser.uid,
+          quantity: 1,
+          addedAt: new Date()
+        });
+
+        alert("Product added to cart!");
+      } catch (err) {
+        alert("Failed to add to cart: " + err.message);
+      }
+    });
+  });
+}
+
 /* ================= CUSTOMER ORDERS ================= */
 async function loadMyOrders() {
   const orderList = document.getElementById("orderList");
@@ -308,58 +360,325 @@ async function loadMyOrders() {
 
 /* ================= LOAD SELLER PRODUCTS ================= */
 
-function loadSellerProducts() {
-  const myProducts = document.getElementById("myProducts");
-  if (!myProducts || !auth.currentUser) return;
 
-  const q = query(
-    collection(db, "products"),
-    where("sellerId", "==", auth.currentUser.uid)
-  );
+if (window.location.pathname.includes("product-detail.html")) {
+  // ===== PRODUCT DETAIL LOGIC START =====
 
-  onSnapshot(q, (snapshot) => {
-    myProducts.innerHTML = "";
+  const urlParams = new URLSearchParams(window.location.search);
+  const productId = urlParams.get("id"); // get product id from query string
 
-    snapshot.forEach(docSnap => {
-      const product = docSnap.data();
+  async function loadProduct() {
+    const docSnap = await getDoc(doc(db, "products", productId));
+    if (!docSnap.exists()) return alert("Product not found");
 
-      // show ONLY active (not sold)
-      if (product.sold === true) return;
+    const product = docSnap.data();
+    document.getElementById("detailImage").src = product.imageURL;
+    document.getElementById("detailName").innerText = product.name;
+    document.getElementById("detailDesc").innerText = product.description;
+    document.getElementById("detailPrice").innerText = product.price;
+  }
 
-      myProducts.innerHTML += `
-        <li>
-          <strong>${product.name}</strong> — $${product.price}<br>
-          ${product.description}<br><br>
-          <img src="${product.imageURL}" width="120"><br><br>
-          <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
-        </li>
-        <hr>
-      `;
+  loadProduct();
+
+  const addToCartBtn = document.getElementById("addToCartBtn");
+  if (addToCartBtn) {
+    addToCartBtn.addEventListener("click", async () => {
+      const quantity = Number(document.getElementById("detailQuantity").value);
+      if (quantity < 1) return alert("Quantity must be at least 1");
+
+      try {
+        await addDoc(collection(db, "carts"), {
+          productId: productId,
+          userId: auth.currentUser.uid,
+          quantity: quantity,
+          addedAt: new Date()
+        });
+        alert("Product added to cart!");
+        window.location.href = "cart.html"; // redirect to cart page
+      } catch (err) {
+        alert("Failed to add to cart: " + err.message);
+      }
     });
+  }
+
+  // ===== PRODUCT DETAIL LOGIC END =====
+}
+
+// ===== CART PAGE =====
+if (window.location.pathname.includes("cart.html")) {
+
+  async function loadCart() {
+    const cartList = document.getElementById("cartList");
+    if (!cartList || !auth.currentUser) return;
+
+    const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
+    const snapshot = await getDocs(q);
+
+    cartList.innerHTML = "";
+
+    for (const docSnap of snapshot.docs) {
+      const order = docSnap.data();
+      const productSnap = await getDoc(doc(db, "products", order.productId));
+      const product = productSnap.exists() ? productSnap.data() : null;
+      if (!product) continue;
+
+      cartList.innerHTML += `
+        <li>
+          ${product.name} — $${product.price} x ${order.quantity}
+          <button onclick="removeFromCart('${docSnap.id}')">Remove</button>
+        </li>
+      `;
+    }
+  }
+
+  window.removeFromCart = async (orderId) => {
+    const confirmRemove = confirm("Remove this item from cart?");
+    if (!confirmRemove) return;
+
+    await deleteDoc(doc(db, "orders", orderId));
+    loadCart();
+  };
+
+  loadCart();
+}
+
+/* ================= LOAD CART ITEMS (BUYER) ================= */
+async function loadCart() {
+  const cartDiv = document.getElementById("cartItems");
+  if (!cartDiv || !auth.currentUser) return;
+
+  const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
+  const snapshot = await getDocs(q);
+
+  cartDiv.innerHTML = "";
+
+  for (const docSnap of snapshot.docs) {
+    const cartItem = docSnap.data();
+
+    // Get product details
+    const productSnap = await getDoc(doc(db, "products", cartItem.productId));
+    if (!productSnap.exists()) continue;
+    const product = productSnap.data();
+
+    cartDiv.innerHTML += `
+      <div class="cart-item">
+        <img src="${product.imageURL}" width="100">
+        <p>${product.name}</p>
+        <p>Price: $${product.price}</p>
+        <p>Quantity: ${cartItem.quantity}</p>
+        <button onclick="removeFromCart('${docSnap.id}')">Remove</button>
+      </div>
+      <hr>
+    `;
+  }
+}
+
+// Remove from cart
+window.removeFromCart = async (cartItems) => {
+  await deleteDoc(doc(db, "carts", cartItems));
+  loadCart(); // refresh the cart
+};
+
+
+/* ===========CHECKOUT BUTTON ============= */
+
+const checkoutBtn = document.getElementById("checkoutBtn");
+if (checkoutBtn) {
+  checkoutBtn.addEventListener("click", async () => {
+    const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) return alert("Your cart is empty!");
+
+    for (const docSnap of snapshot.docs) {
+      const cartItem = docSnap.data();
+
+      // Create order
+      await addDoc(collection(db, "orders"), {
+        productId: cartItem.productId,
+        userId: auth.currentUser.uid,
+        quantity: cartItem.quantity,
+        status: "pending",
+        createdAt: new Date()
+      });
+
+      // Mark product as sold
+      await updateDoc(doc(db, "products", cartItem.productId), {
+        sold: true
+      });
+
+      // Remove from cart
+      await deleteDoc(doc(db, "carts", docSnap.id));
+    }
+
+    alert("Checkout successful!");
+    loadCart();   // refresh cart
+    loadProducts(); // refresh buyer dashboard
+    loadMyOrders(); // refresh orders page
   });
 }
 
-window.deleteProduct = async (productId) => {
-  const confirmDelete = confirm("Are you sure you want to delete this product?");
-  if (!confirmDelete) return;
 
-  const productRef = doc(db, "products", productId);
-  const snap = await getDoc(productRef);
 
-  if (!snap.exists()) {
-    alert("Product not found.");
-    return;
+
+if (window.location.pathname.includes("product-detail.html")) {
+  // ===== PRODUCT DETAIL LOGIC START =====
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const productId = urlParams.get("id"); // get product id from query string
+
+  async function loadProduct() {
+    const docSnap = await getDoc(doc(db, "products", productId));
+    if (!docSnap.exists()) return alert("Product not found");
+
+    const product = docSnap.data();
+    document.getElementById("detailImage").src = product.imageURL;
+    document.getElementById("detailName").innerText = product.name;
+    document.getElementById("detailDesc").innerText = product.description;
+    document.getElementById("detailPrice").innerText = product.price;
   }
 
-  // make sure seller owns it
-  if (snap.data().sellerId !== auth.currentUser.uid) {
-    alert("You are not allowed to delete this product.");
-    return;
+  loadProduct();
+
+  const addToCartBtn = document.getElementById("addToCartBtn");
+  if (addToCartBtn) {
+    addToCartBtn.addEventListener("click", async () => {
+      const quantity = Number(document.getElementById("detailQuantity").value);
+      if (quantity < 1) return alert("Quantity must be at least 1");
+
+      try {
+        await addDoc(collection(db, "carts"), {
+          productId: productId,
+          userId: auth.currentUser.uid,
+          quantity: quantity,
+          addedAt: new Date()
+        });
+        alert("Product added to cart!");
+        window.location.href = "cart.html"; // redirect to cart page
+      } catch (err) {
+        alert("Failed to add to cart: " + err.message);
+      }
+    });
   }
 
-  await deleteDoc(productRef);
-  alert("Product deleted.");
+  // ===== PRODUCT DETAIL LOGIC END =====
+}
+
+// ===== CART PAGE =====
+if (window.location.pathname.includes("cart.html")) {
+
+  async function loadCart() {
+    const cartList = document.getElementById("cartList");
+    if (!cartList || !auth.currentUser) return;
+
+    const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
+    const snapshot = await getDocs(q);
+
+    cartList.innerHTML = "";
+
+    for (const docSnap of snapshot.docs) {
+      const order = docSnap.data();
+      const productSnap = await getDoc(doc(db, "products", order.productId));
+      const product = productSnap.exists() ? productSnap.data() : null;
+      if (!product) continue;
+
+      cartList.innerHTML += `
+        <li>
+          ${product.name} — $${product.price} x ${order.quantity}
+          <button onclick="removeFromCart('${docSnap.id}')">Remove</button>
+        </li>
+      `;
+    }
+  }
+
+  window.removeFromCart = async (orderId) => {
+    const confirmRemove = confirm("Remove this item from cart?");
+    if (!confirmRemove) return;
+
+    await deleteDoc(doc(db, "orders", orderId));
+    loadCart();
+  };
+
+  loadCart();
+}
+
+/* ================= LOAD CART ITEMS (BUYER) ================= */
+async function loadCart() {
+  const cartDiv = document.getElementById("cartItems");
+  if (!cartDiv || !auth.currentUser) return;
+
+  const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
+  const snapshot = await getDocs(q);
+
+  cartDiv.innerHTML = "";
+
+  for (const docSnap of snapshot.docs) {
+    const cartItem = docSnap.data();
+
+    // Get product details
+    const productSnap = await getDoc(doc(db, "products", cartItem.productId));
+    if (!productSnap.exists()) continue;
+    const product = productSnap.data();
+
+    cartDiv.innerHTML += `
+      <div class="cart-item">
+        <img src="${product.imageURL}" width="100">
+        <p>${product.name}</p>
+        <p>Price: $${product.price}</p>
+        <p>Quantity: ${cartItem.quantity}</p>
+        <button onclick="removeFromCart('${docSnap.id}')">Remove</button>
+      </div>
+      <hr>
+    `;
+  }
+}
+
+// Remove from cart
+window.removeFromCart = async (cartItems) => {
+  await deleteDoc(doc(db, "carts", cartItems));
+  loadCart(); // refresh the cart
 };
+
+
+/* ===========CHECKOUT BUTTON ============= */
+
+const checkoutBtn = document.getElementById("checkoutBtn");
+if (checkoutBtn) {
+  checkoutBtn.addEventListener("click", async () => {
+    const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) return alert("Your cart is empty!");
+
+    for (const docSnap of snapshot.docs) {
+      const cartItem = docSnap.data();
+
+      // Create order
+      await addDoc(collection(db, "orders"), {
+        productId: cartItem.productId,
+        userId: auth.currentUser.uid,
+        quantity: cartItem.quantity,
+        status: "pending",
+        createdAt: new Date()
+      });
+
+      // Mark product as sold
+      await updateDoc(doc(db, "products", cartItem.productId), {
+        sold: true
+      });
+
+      // Remove from cart
+      await deleteDoc(doc(db, "carts", docSnap.id));
+    }
+
+    alert("Checkout successful!");
+    loadCart();   // refresh cart
+    loadProducts(); // refresh buyer dashboard
+    loadMyOrders(); // refresh orders page
+  });
+}
+
+
 
 /* ================= SELLER ORDERS ================= */
 async function loadSellerOrders() {

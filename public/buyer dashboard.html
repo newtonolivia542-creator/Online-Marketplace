@@ -12,6 +12,20 @@
   <input type="text" id="searchInput" placeholder="Search products..." />
 <button id="searchBtn">Search</button>
 
+<h2>Browse Products</h2>
+
+<select id="categoryFilter">
+  <option value="all">All</option>
+  <option value="fashion">Fashion</option>
+  <option value="electronics">Electronics</option>
+  <option value="food">Food</option>
+  <option value="home">Home</option>
+  <option value="cosmetics">Cosmetics</option>
+  <option value="plants">Plants</option>
+</select>
+
+<button class="viewBtn" onclick="window.location.href='product-detail.html?id=${product.id}'">View</button>
+
 <div id="productList"></div>
   
   <main>
@@ -19,6 +33,23 @@
       <h1>Products</h1>
       <div id="productList" class="product-grid"></div>
     </section>
+
+    <div id="productDetailModal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width:500px; margin: 50px auto; background:white; padding:20px; border-radius:8px; position:relative;">
+        <span id="closeModal" style="position:absolute; top:10px; right:15px; cursor:pointer; font-size:20px;">&times;</span>
+        
+        <img id="detailImage" src="" alt="Product Image" style="width:100%; max-height:300px; object-fit:cover; margin-bottom:15px;">
+        
+        <h2 id="detailName"></h2>
+        <p id="detailDesc"></p>
+        <p><strong>Price: </strong>$<span id="detailPrice"></span></p>
+        
+        <label for="detailQuantity">Quantity:</label>
+        <input type="number" id="detailQuantity" value="1" min="1" style="width:60px; margin-bottom:15px;">
+        
+        <button id="addToCartBtn" style="background:#28a745; color:white; padding:10px 20px; border:none; cursor:pointer; width:100%;">Add to Cart</button>
+      </div>
+    </div>
   
     <section class="orders-section">
       <h2>My Orders</h2>

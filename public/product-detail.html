@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Product Detail - Marketly</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <h1>Product Detail</h1>
+  <div id="productDetail">
+    <img id="detailImage" src="" width="300">
+    <h2 id="detailName"></h2>
+    <p id="detailDesc"></p>
+    <p>Price: $<span id="detailPrice"></span></p>
+    <label for="detailQuantity">Quantity:</label>
+    <input type="number" id="detailQuantity" value="1" min="1">
+    <br><br>
+    <button id="addToCartBtn">Add to Cart</button>
+  </div>
+
+  <button onclick="window.location.href='buyer dashboard.html'">Back to Store</button>
+  <button onclick="window.location.href='cart.html'">View My Cart</button>
+
+  <script type="module" src="../js/app.js"></script>
+</body>
+</html>

@@ -95,8 +95,13 @@ onAuthStateChanged(auth, async (user) => {
   const currentPage = window.location.pathname;
 
   if (user) {
-    const userDoc = await getDoc(doc(db, "users", user.uid));
+    const userRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userRef);
     if (!userDoc.exists()) return;
+
+    // Update last login for all users
+
+    await updateDoc(userRef, { lastLogin: new Date() });
 
     const role = userDoc.data().role;
 

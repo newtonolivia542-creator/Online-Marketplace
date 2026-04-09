@@ -232,29 +232,34 @@ function displayProducts(products) {
   productList.innerHTML = "";
 
   products.forEach(product => {
-    productList.innerHTML += `
-  <div class="product-card">
-    <img src="${product.imageURL}" class="product-img">
+    const card = document.createElement("div");
+    card.classList.add("product-card");
 
-    <h3>${product.name}</h3>
-    <p class="price">$${product.price}</p>
-    <p class="desc">${product.description}</p>
+    card.innerHTML = `
+      <img src="${product.imageURL}" class="product-img" style="cursor:pointer;">
+      <h3>${product.name}</h3>
+      <p class="price">$${product.price}</p>
+      <p class="desc">${product.description}</p>
 
-    <button class="buyBtn"
-      data-id="${product.id}"
-      data-seller="${product.sellerId}">
-      Buy
-    </button>
-    <button class="viewBtn" onclick="window.location.href='product-detail.html?id=${product.id}'">
-      View
-    </button>
-    
-      <button class="addCartBtn" data-id="${product.id}">Add to Cart</button>
-    </div>
-  </div>
-`;
-});
-  
+      <button class="buyBtn"
+        data-id="${product.id}"
+        data-seller="${product.sellerId}">
+        Buy
+      </button>
+
+      <button class="addCartBtn" data-id="${product.id}">
+        Add to Cart
+      </button>
+    `;
+
+    // 🔥 CLICK IMAGE INSTEAD OF BUTTON
+    card.querySelector("img").addEventListener("click", () => {
+      window.location.href = `product-detail.html?id=${product.id}`;
+    });
+
+    productList.appendChild(card);
+  });
+
   setupBuyButtons();
   setupAddCartButtons();
 }

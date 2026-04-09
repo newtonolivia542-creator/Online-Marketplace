@@ -28,7 +28,7 @@ h2 {
 }
 
 #logoutBtn:hover {
-  background: #c9302c;
+  background: hsl(2, 58%, 56%);
 }
 
 /* Tables */
@@ -37,7 +37,7 @@ table {
   border-collapse: collapse;
   background: white;
   margin-top: 10px;
-  box-shadow: 0 0 5px rgba(0,0,0,0.1);
+  box-shadow: 0 0 5px rgba(11, 241, 53, 0.1);
 }
 
 th {

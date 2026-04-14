@@ -48,20 +48,48 @@ async function loadUsers() {
   userList.innerHTML = ""; // clear previous content
 
   let count = 1; 
+  let activeCount = 0;
 
   snapshot.forEach(docSnap => {
     const user = docSnap.data();
 
-        // ✅ SAFE DATE HANDLING
+        // SAFE DATE HANDLING
     let created = "N/A";
     let lastLogin = "N/A";
+    let status = "Inactive";
 
-    if (user.createdAt && user.createdAt.seconds) {
-      created = new Date(user.createdAt.seconds * 1000).toLocaleString();
+    let createdTime = null;
+    let lastLoginTime = null;
+
+    // createdAt
+    if (user.createdAt) {
+      try {
+        createdTime = user.createdAt.toDate();
+        created = createdTime.toLocaleString();
+      } catch {
+        created = "Invalid date";
+      }
     }
 
-    if (user.lastLogin && user.lastLogin.seconds) {
-      lastLogin = new Date(user.lastLogin.seconds * 1000).toLocaleString();
+    // lastLogin
+    if (user.lastLogin) {
+      try {
+        lastLoginTime = user.lastLogin.toDate();
+        lastLogin = lastLoginTime.toLocaleString();
+      } catch {
+        lastLogin = "Invalid date";
+      }
+    }
+
+    // Active check
+    if (lastLoginTime) {
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+
+      if (now - lastLoginTime.getTime() <= oneDay) {
+        status = "Active";
+        activeCount++;
+      }
     }
 
     userList.innerHTML += `
@@ -71,10 +99,18 @@ async function loadUsers() {
         <td>${user.role || "N/A"}</td>
         <td>${created}</td>
         <td>${lastLogin}</td>
+        <td style="color:${status === "Active" ? "green" : "red"};">
+          ${status}
+        </td>
       </tr>
     `;
     count++;
   });
+  // ✅ update active count
+  const activeCountEl = document.getElementById("activeCount");
+  if (activeCountEl) {
+    activeCountEl.innerText = activeCount;
+  }
 }
 
 

@@ -45,8 +45,12 @@ if (registerForm) {
 
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "users", userCred.user.uid), { email, role });
-
+      await setDoc(doc(db, "users", userCred.user.uid), {
+        email,
+        role,
+        createdAt: new Date(), // account creation date
+        lastLogin: new Date()  // first login = signup
+      });
       if (role === "seller") {
         window.location.href = "seller dashboard.html";
       } else if (role === "buyer") {
@@ -72,6 +76,9 @@ if (loginForm) {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
+      await updateDoc(doc(db, "users", userCred.user.uid), {
+        lastLogin: new Date()
+      });
 
       if (userDoc.exists()) {
         const role = userDoc.data().role;

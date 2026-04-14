@@ -35,30 +35,58 @@ onAuthStateChanged(auth, async (user) => {
   loadUsers();
   loadProducts(); // This call needs loadProducts to be defined already
   loadOrders();
+  //loadAllUsers();
 });
 
 // ================= USERS =================
 async function loadUsers() {
   const snapshot = await getDocs(collection(db, "users"));
   const userList = document.getElementById("userList").querySelector("tbody");
+
+  if (!userList) return;
+
   userList.innerHTML = ""; // clear previous content
+
+  let count = 1; 
 
   snapshot.forEach(docSnap => {
     const user = docSnap.data();
+
+        // ✅ SAFE DATE HANDLING
+    let created = "N/A";
+    let lastLogin = "N/A";
+
+    if (user.createdAt && user.createdAt.seconds) {
+      created = new Date(user.createdAt.seconds * 1000).toLocaleString();
+    }
+
+    if (user.lastLogin && user.lastLogin.seconds) {
+      lastLogin = new Date(user.lastLogin.seconds * 1000).toLocaleString();
+    }
+
     userList.innerHTML += `
       <tr>
-        <td>${user.email}</td>
-        <td>${user.role}</td>
+        <td>${count}</td>
+        <td>${user.email || "N/A"}</td>
+        <td>${user.role || "N/A"}</td>
+        <td>${created}</td>
+        <td>${lastLogin}</td>
       </tr>
     `;
+    count++;
   });
 }
+
 
 // ================= PRODUCTS =================
 async function loadProducts() {
   const snapshot = await getDocs(collection(db, "products"));
   const productList = document.getElementById("productList");
+
+  if (!productList) return;
   productList.innerHTML = "";
+
+  let count = 1; 
 
   for (const docSnap of snapshot.docs) {
     const product = docSnap.data();
@@ -75,6 +103,7 @@ async function loadProducts() {
     const row = document.createElement("tr");
 
     row.innerHTML = `
+      <td>${count}</td>
       <td>${product.name || "No name"}</td>
       <td>$${product.price || 0}</td>
       <td>${sellerEmail}</td>
@@ -82,6 +111,7 @@ async function loadProducts() {
         <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
       </td>
     `;
+    count++; 
 
     productList.appendChild(row);
   }

@@ -183,7 +183,7 @@ if (productForm) {
       imageURL: imageURL,
       sellerId: auth.currentUser.uid,
       category: document.getElementById("pCategory").value,
-      createdAt: serverTimestamp() // Just added
+      createdAt: new Date()
     };
 
     await addDoc(collection(db, "products"), productData);
@@ -299,9 +299,7 @@ function setupBuyButtons() {
           sellerId: btn.dataset.seller,
           userId: auth.currentUser.uid,
           status: "pending",
-          createdAt: serverTimestamp(), // purchase time
-          shippedAt: null,
-          deliveredAt: null
+          createdAt: new Date()
         });
         await updateDoc(doc(db, "products", btn.dataset.id), {
           sold: true
@@ -564,10 +562,9 @@ if (checkoutBtn) {
       await addDoc(collection(db, "orders"), {
         productId: cartItem.productId,
         userId: auth.currentUser.uid,
-        sellerId: product.sellerId,
         quantity: cartItem.quantity,
         status: "pending",
-        createdAt: serverTimestamp()
+        createdAt: new Date()
       });
 
       // Mark product as sold
@@ -600,29 +597,6 @@ async function loadSellerOrders() {
 
   for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
-
-    //New Add
-    let created = "N/A";
-    let shipped = "Not shipped";
-    let delivered = "Not delivered";
-
-    if (order.createdAt) {
-      try {
-        created = order.createdAt.toDate().toLocaleString();
-      } catch {}
-    }
-
-    if (order.shippedAt) {
-      try {
-        shipped = order.shippedAt.toDate().toLocaleString();
-      } catch {}
-    }
-
-    if (order.deliveredAt) {
-      try {
-        delivered = order.deliveredAt.toDate().toLocaleString();
-      } catch {}
-    }
 
     // get product info
     const productSnap = await getDoc(doc(db, "products", order.productId));

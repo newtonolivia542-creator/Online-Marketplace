@@ -183,7 +183,7 @@ if (productForm) {
       imageURL: imageURL,
       sellerId: auth.currentUser.uid,
       category: document.getElementById("pCategory").value,
-      createdAt: new Date()
+      createdAt: serverTimestamp() // Just added
     };
 
     await addDoc(collection(db, "products"), productData);
@@ -299,7 +299,9 @@ function setupBuyButtons() {
           sellerId: btn.dataset.seller,
           userId: auth.currentUser.uid,
           status: "pending",
-          createdAt: new Date()
+          createdAt: serverTimestamp(), // purchase time
+          shippedAt: null,
+          deliveredAt: null
         });
         await updateDoc(doc(db, "products", btn.dataset.id), {
           sold: true
@@ -562,9 +564,10 @@ if (checkoutBtn) {
       await addDoc(collection(db, "orders"), {
         productId: cartItem.productId,
         userId: auth.currentUser.uid,
+        sellerId: product.sellerId,
         quantity: cartItem.quantity,
         status: "pending",
-        createdAt: new Date()
+        createdAt: serverTimestamp()
       });
 
       // Mark product as sold
@@ -598,6 +601,29 @@ async function loadSellerOrders() {
   for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
 
+    //New Add
+    let created = "N/A";
+    let shipped = "Not shipped";
+    let delivered = "Not delivered";
+
+    if (order.createdAt) {
+      try {
+        created = order.createdAt.toDate().toLocaleString();
+      } catch {}
+    }
+
+    if (order.shippedAt) {
+      try {
+        shipped = order.shippedAt.toDate().toLocaleString();
+      } catch {}
+    }
+
+    if (order.deliveredAt) {
+      try {
+        delivered = order.deliveredAt.toDate().toLocaleString();
+      } catch {}
+    }
+
     // get product info
     const productSnap = await getDoc(doc(db, "products", order.productId));
     const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
@@ -614,15 +640,22 @@ async function loadSellerOrders() {
 }
 
 window.markShipped = async (orderId) => {
-  await updateDoc(doc(db, "orders", orderId), { status: "shipped" });
+  await updateDoc(doc(db, "orders", orderId), {
+    status: "shipped",
+    shippedAt: new Date() // ✅ ADD THIS
+  });
+
   loadSellerOrders();
 };
 
 window.markDelivered = async (orderId) => {
-  await updateDoc(doc(db, "orders", orderId), { status: "delivered" });
+  await updateDoc(doc(db, "orders", orderId), {
+    status: "delivered",
+    deliveredAt: new Date() // ✅ ADD THIS
+  });
+
   loadSellerOrders();
 };
-
 /*============SOLD ITEMS HISTORY ===========*/
 async function loadSoldProducts() {
   const soldList = document.getElementById("soldProducts");

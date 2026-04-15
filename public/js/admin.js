@@ -136,6 +136,18 @@ async function loadProducts() {
       }
     }
 
+    // DATE FIX
+    let created = "N/A";
+    if (product.createdAt) {
+      try {
+        created = product.createdAt.toDate
+          ? product.createdAt.toDate().toLocaleString()
+          : new Date(product.createdAt).toLocaleString();
+      } catch {
+        created = "Invalid";
+      }
+    }
+
     const row = document.createElement("tr");
 
     row.innerHTML = `
@@ -143,13 +155,13 @@ async function loadProducts() {
       <td>${product.name || "No name"}</td>
       <td>$${product.price || 0}</td>
       <td>${sellerEmail}</td>
+      <td>${created}</td>
       <td>
         <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
       </td>
     `;
-    count++; 
-
     productList.appendChild(row);
+    count++; 
   }
 }
 window.deleteProduct = async function(productId) {
@@ -163,22 +175,58 @@ window.deleteProduct = async function(productId) {
 async function loadOrders() {
   const snapshot = await getDocs(collection(db, "orders"));
   const orderList = document.getElementById("allOrders");
+
+  if (!orderList) return;
   orderList.innerHTML = "";
 
   for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
 
-    // get product
+    // product
     const productSnap = await getDoc(doc(db, "products", order.productId));
-    const productName = productSnap.exists() ? productSnap.data().name : "Unknown";
+    const productName = productSnap.exists()
+      ? productSnap.data().name
+      : "Unknown";
 
-    // get buyer
+    // buyer
     const buyerSnap = await getDoc(doc(db, "users", order.userId));
-    const buyerEmail = buyerSnap.exists() ? buyerSnap.data().email : "Unknown";
+    const buyerEmail = buyerSnap.exists()
+      ? buyerSnap.data().email
+      : "Unknown";
 
-    // get seller
+    // seller
     const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
-    const sellerEmail = sellerSnap.exists() ? sellerSnap.data().email : "Unknown";
+    const sellerEmail = sellerSnap.exists()
+      ? sellerSnap.data().email
+      : "Unknown";
+
+    // ✅ DATE HANDLING (SAFE FOR ALL TYPES)
+    const formatDate = (field) => {
+      if (!field) return "N/A";
+      try {
+        return field.toDate
+          ? field.toDate().toLocaleString()
+          : new Date(field).toLocaleString();
+      } catch {
+        return "Invalid";
+      }
+    };
+
+    const created = formatDate(order.createdAt);
+    let shipped = "Not shipped";
+    let delivered = "Not delivered";
+
+    if (order.shippedAt) {
+      shipped = formatDate(order.shippedAt);
+    } else if (order.status === "shipped" || order.status === "delivered") {
+      shipped = "✔ Shipped (old data)";
+    }
+
+    if (order.deliveredAt) {
+      delivered = formatDate(order.deliveredAt);
+    } else if (order.status === "delivered") {
+      delivered = "✔ Delivered (old data)";
+    }
 
     orderList.innerHTML += `
       <tr>
@@ -186,6 +234,9 @@ async function loadOrders() {
         <td>${buyerEmail}</td>
         <td>${sellerEmail}</td>
         <td>${order.status}</td>
+        <td>${created}</td>     <!-- purchase -->
+        <td>${shipped}</td>     <!-- shipped -->
+        <td>${delivered}</td>   <!-- delivered -->
       </tr>
     `;
   }

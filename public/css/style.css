@@ -72,18 +72,18 @@ input:focus, select:focus, textarea:focus {
 /* BUTTONS */
 button {
   padding: 0.7rem;
-  background: hsl(105, 83%, 53%);
+  background: hwb(190 14% 8%);
   color: hsl(0, 85%, 8%);
   border: none;
   font-size: 1rem;
   cursor: pointer;
-  width: 200px;
+  width: 100px;
   margin: left;
   display: block;
 }
 
 button:hover {
-  background: rgb(121, 227, 8);
+  background: #08e3d1;
 }
 
 /* SECONDARY BUTTON */

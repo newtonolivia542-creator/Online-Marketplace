@@ -1,29 +1,51 @@
-
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Register</title>
-  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/login.css" />
 </head>
+
 <body>
 
-<h2>Create Account</h2>
+<div class="container">
 
-<form id="registerForm">
-  <input type="email" id="email" placeholder="Email" required />
-  <input type="password" id="password" placeholder="Password" required />
+  <!-- LEFT SIDE -->
+  <div class="left">
+    <h1>Join Marketly</h1>
+    <p>
+      Start buying and selling with ease.<br><br>
+      Connect with a trusted community and discover great deals every day.
+    </p>
+  </div>
 
-  <select id="role" required>
-    <option value="">Select Role</option>
-    <option value="buyer">Buyer</option>
-    <option value="seller">Seller</option>
-  </select>
+  <!-- RIGHT SIDE -->
+  <div class="right">
+    <form id="registerForm" class="login-card">
 
-  <button type="submit">Register</button>
-</form>
+      <h2>Create Account</h2>
 
-<p>Already have an account? <a href="login.html">Login</a></p>
-  
+      <input type="email" id="email" placeholder="Email" required />
+      <input type="password" id="password" placeholder="Password" required />
+
+      <select id="role" required>
+        <option value="">Select Role</option>
+        <option value="buyer">Buyer</option>
+        <option value="seller">Seller</option>
+      </select>
+
+      <button type="submit" class="btn-primary">Register</button>
+
+      <p style="margin-top: 15px;">
+        Already have an account?
+        <a href="login.html">Login</a>
+      </p>
+
+    </form>
+  </div>
+
+</div>
+
 <script type="module" src="../js/app.js"></script>
 
 </body>

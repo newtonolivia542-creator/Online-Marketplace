@@ -117,6 +117,7 @@ async function loadUsers() {
         <td style="color:${user.status === "banned" ? "red" : "green"};">
           ${user.status || "active"}
         </td>
+        <td>${user.banReason || "-"}</td>
       </tr>
     `;
     count++;
@@ -258,11 +259,16 @@ async function loadOrders() {
 }
 // ========BAN AND UNBAN FUNCTION ===========/
 window.banUser = async function(userId) {
-  const confirmBan = confirm("Are you sure you want to ban this user?");
-  if (!confirmBan) return;
+  const reason = prompt("Enter reason for banning this user:");
+
+  if (!reason) {
+    alert("Ban cancelled. Reason is required.");
+    return;
+  }
 
   await updateDoc(doc(db, "users", userId), {
-    status: "banned"
+    status: "banned",
+    banReason: reason // ADD THIS
   });
 
   alert("User banned");
@@ -274,7 +280,8 @@ window.unbanUser = async function(userId) {
   if (!confirmUnban) return;
 
   await updateDoc(doc(db, "users", userId), {
-    status: "active"
+    status: "active",
+    banReason: "" 
   });
 
   alert("User unbanned");

@@ -106,7 +106,7 @@ async function loadUsers() {
         <td>
           ${
             user.status === "banned"
-              ? `<button style="background-color:red; color:white; border:none; padding:5px 10px; border-radius:5px;" onclick="unbanUser('${docSnap.id}')">
+              ? `<button style="background-color:green; color:white; border:none; padding:5px 10px; border-radius:5px;" onclick="unbanUser('${docSnap.id}')">
                     UnBan
                   </button>`
               : `<button style="background-color:red; color:white; border:none; padding:5px 10px; border-radius:5px;" onclick="banUser('${docSnap.id}')">
@@ -256,7 +256,7 @@ async function loadOrders() {
     `;
   }
 }
-
+// ========BAN AND UNBAN FUNCTION ===========/
 window.banUser = async function(userId) {
   const confirmBan = confirm("Are you sure you want to ban this user?");
   if (!confirmBan) return;

@@ -49,7 +49,7 @@ if (registerForm) {
         email,
         role,
         createdAt: new Date(), // account creation date
-        lastLogin: new Date()  // first login = signup
+        lastLogin: new Date(),  // first login = signup
         status: "active"
       });
       if (role === "seller") {
@@ -77,7 +77,7 @@ if (loginForm) {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
-      
+
       if (userDoc.exists() && userDoc.data().status === "banned") {
         alert("Your account has been banned.");
         await signOut(auth);

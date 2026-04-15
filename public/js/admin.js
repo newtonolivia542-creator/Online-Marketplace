@@ -5,7 +5,8 @@ import {
   getDocs,
   doc,
   getDoc,
-  deleteDoc
+  deleteDoc,
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const userList = document.getElementById("userList");
@@ -102,6 +103,20 @@ async function loadUsers() {
         <td style="color:${status === "Active" ? "green" : "red"};">
           ${status}
         </td>
+        <td>
+          ${
+            user.status === "banned"
+              ? `<button style="background-color:red; color:white; border:none; padding:5px 10px; border-radius:5px;" onclick="unbanUser('${docSnap.id}')">
+                    UnBan
+                  </button>`
+              : `<button style="background-color:red; color:white; border:none; padding:5px 10px; border-radius:5px;" onclick="banUser('${docSnap.id}')">
+                    Ban
+                  </button>`
+          }
+        </td>
+        <td style="color:${user.status === "banned" ? "red" : "green"};">
+          ${user.status || "active"}
+        </td>
       </tr>
     `;
     count++;
@@ -157,7 +172,7 @@ async function loadProducts() {
       <td>${sellerEmail}</td>
       <td>${created}</td>
       <td>
-        <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
+        <button style="background-color:red; color:white; border:none; padding:5px 10px; border-radius:5px;" onclick="deleteProduct('${docSnap.id}')">Delete</button>
       </td>
     `;
     productList.appendChild(row);
@@ -241,3 +256,27 @@ async function loadOrders() {
     `;
   }
 }
+
+window.banUser = async function(userId) {
+  const confirmBan = confirm("Are you sure you want to ban this user?");
+  if (!confirmBan) return;
+
+  await updateDoc(doc(db, "users", userId), {
+    status: "banned"
+  });
+
+  alert("User banned");
+  loadUsers();
+};
+
+window.unbanUser = async function(userId) {
+  const confirmUnban = confirm("Unban this user?");
+  if (!confirmUnban) return;
+
+  await updateDoc(doc(db, "users", userId), {
+    status: "active"
+  });
+
+  alert("User unbanned");
+  loadUsers();
+};

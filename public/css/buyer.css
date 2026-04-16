@@ -1,0 +1,114 @@
+/* NAVBAR */
+.navbar {
+  background: #1e3a8a;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  padding: 15px 30px;
+  align-items: center;
+}
+
+/* RIGHT BUTTON GROUP */
+.nav-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ORDER BUTTON */
+.order-btn {
+  background: #3b82f6;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+/* CART BUTTON */
+.cart-btn {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* LOGOUT */
+#logoutBtn {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* SEARCH */
+.search-bar {
+  display: flex;
+  gap: 10px;
+  padding: 20px 30px;
+}
+
+#searchInput {
+  flex: 1;
+  padding: 10px;
+}
+
+#searchBtn {
+  padding: 10px 20px;
+  background: #10b981;
+  border: none;
+  color: white;
+  border-radius: 6px;
+}
+
+/* SECTION TITLE */
+.section-title {
+  padding: 0 30px;
+}
+
+/* CATEGORY DROPDOWN */
+.category-wrapper {
+  padding: 15px 30px;
+}
+
+#categoryFilter {
+  padding: 10px;
+  border-radius: 6px;
+}
+
+/* PRODUCT GRID */
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+  padding: 20px 30px;
+}
+
+/* MODAL */
+.modal-content {
+  max-width: 500px;
+  margin: 50px auto;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  position: relative;
+}
+
+#closeModal {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+#addToCartBtn {
+  background: #3b82f6;
+  color: white;
+  padding: 10px;
+  border: none;
+  width: 100%;
+  border-radius: 6px;
+}

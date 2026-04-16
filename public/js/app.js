@@ -364,17 +364,43 @@ async function loadMyOrders() {
     // Get product info
     const productSnap = await getDoc(doc(db, "products", order.productId));
     const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
+//New Update
+  const orderDate = order.createdAt
+    ? new Date(order.createdAt.seconds * 1000).toLocaleString()
+    : "N/A";
 
-    orderList.innerHTML += `
-      <li>
-        Product: <strong>${productName}</strong> |
-        Status: <strong>${order.status}</strong>
-        ${order.status === "pending" ? 
-          `<button onclick="cancelOrder('${docSnap.id}', '${order.productId}')">Cancel</button>` 
-          : ""}
-      </li>
-    `;
-  }
+  const quantity = order.quantity || 1;
+  const price = order.price || (productSnap.exists() ? productSnap.data().price : 0);
+  const total = price * quantity;
+
+  const product = productSnap.exists() ? productSnap.data() : {};
+  const image = product.image || product.imageUrl || "";
+
+  orderList.innerHTML += `
+  <div class="order-details">
+      <h3>${productName}</h3>
+      <img src="${product.imageURL}" class="product-img" style="width: 200px;">
+
+      <p><strong>Date Ordered:</strong> ${orderDate}</p>
+      <p><strong>Quantity:</strong> ${quantity}</p>
+      <p><strong>Total:</strong> $${total}</p>
+
+      <p class="order-status status-${order.status}">
+        <strong>Status:</strong> ${order.status}
+      </p>
+
+      ${
+        order.status === "pending"
+          ? `<button onclick="cancelOrder('${docSnap.id}', '${order.productId}')" class="btn-danger">
+              Cancel
+            </button>`
+          : ""
+      }
+    </div>
+
+  </div>
+`;
+}
 }
 
 /* ================= LOAD SELLER PRODUCTS ================= */

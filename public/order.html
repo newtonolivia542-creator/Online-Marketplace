@@ -1,24 +1,31 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>View Orders</title>
+  <title>My Orders</title>
+  <link rel="stylesheet" href="../css/buyer dashboard.css" />
 </head>
+
 <body>
-  <header>
-    <h2 id="welcome"></h2>
+
+<header class="navbar">
+  <h2 id="welcome"></h2>
+
+  <div class="nav-actions">
     <button id="logoutBtn">Logout</button>
+    <br>
     <a href="buyer dashboard.html" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">Back To Shop</a>
-  </header>
+  </div>
+</header>
 
-  <h2>All Orders</h2>
+<main class="orders-container">
 
-  <section class="orders-section">
-      <h2>My Orders</h2>
-      <ul id="orderList"></ul>
-    </section>
-  </main>
+  <h2 class="section-title">My Orders</h2>
+
+  <div id="orderList" class="orders-grid"></div>
+
+</main>
 
 <script type="module" src="../js/app.js"></script>
-<link rel="stylesheet" href="../css/buyer dashboard.css" />
+
 </body>
 </html>

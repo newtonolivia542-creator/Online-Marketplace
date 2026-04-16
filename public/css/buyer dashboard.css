@@ -67,7 +67,16 @@ main {
 .buyBtn {
   margin-top: 10px;
   width: 100%;
-  background: #10b981;
+  background: #4facfe;
+  border: none;
+  color: white;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.addCartBtn {
+  margin-top: 10px;
+  background: #4facfe;
   border: none;
   color: white;
   padding: 8px;
@@ -76,7 +85,7 @@ main {
 }
 
 .buyBtn:hover {
-  background: #059669;
+  background: #4facfe;
 }
 
 /* Orders */
@@ -136,13 +145,13 @@ main {
   width: auto;        /* 🔥 stops long button */
   border: none;
   border-radius: 6px;
-  background-color: #1abc9c;
+  background-color: #4facfe;
   color: white;
   cursor: pointer;
 }
 
 .buyBtn:hover {
-  background-color: #16a085;
+  background-color: #4facff;
 }
 
 .search-container {
@@ -170,12 +179,12 @@ main {
   padding: 8px 16px;
   border: none;
   border-radius: 6px;
-  background-color: #1abc9c;
+  background-color: #4facfe;
   color: white;
   font-size: 14px;
   cursor: pointer;
 }
 
 #searchBtn:hover {
-  background-color: #16a085;
+  background-color: #4facff;
 }

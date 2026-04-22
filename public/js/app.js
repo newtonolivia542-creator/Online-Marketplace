@@ -646,22 +646,36 @@ async function loadSellerOrders() {
   }
 }
 
+// ================= SHIP ORDER =================
 window.markShipped = async (orderId) => {
-  await updateDoc(doc(db, "orders", orderId), {
-    status: "shipped",
-    shippedAt: new Date() // ✅ ADD THIS
-  });
+  try {
+    await updateDoc(doc(db, "orders", orderId), {
+      status: "shipped",
+      shippedAt: new Date() // ✅ save timestamp
+    });
 
-  loadSellerOrders();
+    alert("Order marked as shipped");
+    loadSellerOrders();
+
+  } catch (err) {
+    alert("Failed to update order: " + err.message);
+  }
 };
 
+// ================= DELIVER ORDER =================
 window.markDelivered = async (orderId) => {
-  await updateDoc(doc(db, "orders", orderId), {
-    status: "delivered",
-    deliveredAt: new Date() // ✅ ADD THIS
-  });
+  try {
+    await updateDoc(doc(db, "orders", orderId), {
+      status: "delivered",
+      deliveredAt: new Date() // ✅ save timestamp
+    });
 
-  loadSellerOrders();
+    alert("Order marked as delivered");
+    loadSellerOrders();
+
+  } catch (err) {
+    alert("Failed to update order: " + err.message);
+  }
 };
 /*============SOLD ITEMS HISTORY ===========*/
 async function loadSoldProducts() {

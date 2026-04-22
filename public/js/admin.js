@@ -188,6 +188,7 @@ window.deleteProduct = async function(productId) {
 };
 
 // ================= ORDERS =================
+// ================= ORDERS =================
 async function loadOrders() {
   const snapshot = await getDocs(collection(db, "orders"));
   const orderList = document.getElementById("allOrders");
@@ -195,68 +196,79 @@ async function loadOrders() {
   if (!orderList) return;
   orderList.innerHTML = "";
 
+  // 🔥 universal date formatter
+  const formatDate = (field) => {
+    if (!field) return "N/A";
+    try {
+      return field.toDate
+        ? field.toDate().toLocaleString()
+        : new Date(field).toLocaleString();
+    } catch {
+      return "Invalid";
+    }
+  };
+
   for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
-
-    // product
-    const productSnap = await getDoc(doc(db, "products", order.productId));
-    const productName = productSnap.exists()
-      ? productSnap.data().name
-      : "Unknown";
-
-    // buyer
-    const buyerSnap = await getDoc(doc(db, "users", order.userId));
-    const buyerEmail = buyerSnap.exists()
-      ? buyerSnap.data().email
-      : "Unknown";
-
-    // seller
-    const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
-    const sellerEmail = sellerSnap.exists()
-      ? sellerSnap.data().email
-      : "Unknown";
-
-    // ✅ DATE HANDLING (SAFE FOR ALL TYPES)
-    const formatDate = (field) => {
-      if (!field) return "N/A";
-      try {
-        return field.toDate
-          ? field.toDate().toLocaleString()
-          : new Date(field).toLocaleString();
-      } catch {
-        return "Invalid";
+  
+    try {
+      let productName = "Unknown";
+      if (order.productId) {
+        const productSnap = await getDoc(doc(db, "products", order.productId));
+        if (productSnap.exists()) {
+          productName = productSnap.data().name;
+        }
       }
-    };
-
-    const created = formatDate(order.createdAt);
-    let shipped = "Not shipped";
-    let delivered = "Not delivered";
-
-    if (order.shippedAt) {
-      shipped = formatDate(order.shippedAt);
-    } else if (order.status === "shipped" || order.status === "delivered") {
-      shipped = "✔ Shipped (old data)";
+  
+      let buyerEmail = "Unknown";
+      if (order.userId) {
+        const buyerSnap = await getDoc(doc(db, "users", order.userId));
+        if (buyerSnap.exists()) {
+          buyerEmail = buyerSnap.data().email;
+        }
+      }
+  
+      let sellerEmail = "Unknown";
+      if (order.sellerId) {
+        const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
+        if (sellerSnap.exists()) {
+          sellerEmail = sellerSnap.data().email;
+        }
+      }
+  
+      const created = formatDate(order.createdAt);
+  
+      let shipped = "Not shipped";
+      let delivered = "Not delivered";
+  
+      if (order.shippedAt) {
+        shipped = formatDate(order.shippedAt);
+      } else if (order.status === "shipped" || order.status === "delivered") {
+        shipped = "Shipped (no timestamp)";
+      }
+  
+      if (order.deliveredAt) {
+        delivered = formatDate(order.deliveredAt);
+      } else if (order.status === "delivered") {
+        delivered = "Delivered (no timestamp)";
+      }
+  
+      orderList.innerHTML += `
+        <tr>
+          <td>${productName}</td>
+          <td>${buyerEmail}</td>
+          <td>${sellerEmail}</td>
+          <td>${created}</td>
+          <td>${order.status || "N/A"}</td>
+          <td>${shipped}</td>
+          <td>${delivered}</td>
+        </tr>
+      `;
+  
+    } catch (err) {
+      console.error("Error loading order:", err, order);
     }
-
-    if (order.deliveredAt) {
-      delivered = formatDate(order.deliveredAt);
-    } else if (order.status === "delivered") {
-      delivered = "✔ Delivered (old data)";
-    }
-
-    orderList.innerHTML += `
-      <tr>
-        <td>${productName}</td>
-        <td>${buyerEmail}</td>
-        <td>${sellerEmail}</td>
-        <td>${order.status}</td>
-        <td>${created}</td>     <!-- purchase -->
-        <td>${shipped}</td>     <!-- shipped -->
-        <td>${delivered}</td>   <!-- delivered -->
-      </tr>
-    `;
   }
-}
 // ========BAN AND UNBAN FUNCTION ===========/
 window.banUser = async function(userId) {
   const reason = prompt("Enter reason for banning this user:");
@@ -287,3 +299,4 @@ window.unbanUser = async function(userId) {
   alert("User unbanned");
   loadUsers();
 };
+}

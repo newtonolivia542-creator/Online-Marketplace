@@ -8,14 +8,19 @@
 <body>
   <h1>Product Detail</h1>
   <div id="productDetail">
-    <img id="detailImage" src="" width="300">
+    <div id="imageSlider" class="slider">
+      <button id="prevBtn" class="slider-btn left">❮</button>
+    
+      <img id="detailImage" src="">
+    
+      <button id="nextBtn" class="slider-btn right">❯</button>
+    </div>
     <h2 id="detailName"></h2>
     <p id="detailDesc"></p>
     <p>Price: $<span id="detailPrice"></span></p>
     <label for="detailQuantity">Quantity:</label>
     <input type="number" id="detailQuantity" value="1" min="1">
     <br><br>
-    <div id="imageGallery"></div>
     <button id="addToCartBtn">Add to Cart</button>
   </div>
 

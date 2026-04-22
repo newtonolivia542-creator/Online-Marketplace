@@ -269,3 +269,45 @@ footer {
     border-left: 5px solid #3b82f6;
   }
 }
+/* Slider container */
+.slider {
+  position: relative;
+  width: 300px;
+}
+
+/* Main image */
+#detailImage {
+  width: 100%;
+  border-radius: 10px;
+}
+
+/* Arrow buttons */
+.slider-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  font-size: 18px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 50%;
+  font-size: 14px;
+  padding: 6px 10px;
+}
+
+/* Left button */
+.slider-btn.left {
+  left: 10px;
+}
+
+/* Right button */
+.slider-btn.right {
+  right: 10px;
+}
+
+/* Hover effect (nice touch) */
+.slider-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+}

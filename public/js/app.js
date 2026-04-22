@@ -171,23 +171,32 @@ if (productForm) {
   productForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const fileInput = document.getElementById("pImage");
-    const file = fileInput.files[0];
+const fileInput = document.getElementById("pImage");
+    //Changes Here//
+const files = fileInput.files;
 
-    if (!file) {
-      alert("Please choose an image");
-      return;
-    }
+if (files.length === 0) {
+  alert("Please choose at least one image");
+  return;
+}
 
-    const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    const imageURL = await getDownloadURL(storageRef);
+let imageURLs = [];
+
+for (let i = 0; i < files.length; i++) {
+  const file = files[i];
+
+  const storageRef = ref(storage, `products/${Date.now()}_${i}_${file.name}`);
+  await uploadBytes(storageRef, file);
+
+  const url = await getDownloadURL(storageRef);
+  imageURLs.push(url);
+}
 
     const productData = {
       name: document.getElementById("pName").value,
       price: Number(document.getElementById("pPrice").value),
       description: document.getElementById("pDesc").value,
-      imageURL: imageURL,
+      images: imageURLs,
       sellerId: auth.currentUser.uid,
       category: document.getElementById("pCategory").value,
       createdAt: new Date()
@@ -250,7 +259,7 @@ function displayProducts(products) {
     card.classList.add("product-card");
 
     card.innerHTML = `
-      <img src="${product.imageURL}" class="product-img" style="cursor:pointer;">
+      <img src="${product.images ? product.images[0] : product.imageURL}" class="product-img" style="cursor:pointer;">
       <h3>${product.name}</h3>
       <p class="price">$${product.price}</p>
       <p class="desc">${product.description}</p>
@@ -427,7 +436,11 @@ function loadSellerProducts() {
         <li>
           <strong>${product.name}</strong> — $${product.price}<br>
           ${product.description}<br><br>
-          <img src="${product.imageURL}" width="120"><br><br>
+          ${
+            product.images
+              ? product.images.map(img => `<img src="${img}" width="80">`).join("")
+              : `<img src="${product.imageURL}" width="80">`
+          }          
           <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
         </li>
         <hr>
@@ -470,10 +483,32 @@ if (window.location.pathname.includes("product-detail.html")) {
     if (!docSnap.exists()) return alert("Product not found");
 
     const product = docSnap.data();
-    document.getElementById("detailImage").src = product.imageURL;
+    document.getElementById("detailImage").src =
+      product.images && product.images.length > 0
+        ? product.images[0]
+        : product.imageURL;
     document.getElementById("detailName").innerText = product.name;
     document.getElementById("detailDesc").innerText = product.description;
     document.getElementById("detailPrice").innerText = product.price;
+
+const gallery = document.getElementById("imageGallery");
+
+if (product.images && product.images.length > 0) {
+  gallery.innerHTML = "";
+
+  product.images.forEach(img => {
+    gallery.innerHTML += `
+      <img src="${img}" width="80" style="margin:5px; cursor:pointer;">
+    `;
+  });
+
+  // Click to change main image
+  gallery.querySelectorAll("img").forEach(imgEl => {
+    imgEl.addEventListener("click", () => {
+      document.getElementById("detailImage").src = imgEl.src;
+    });
+  });
+}
   }
 
   loadProduct();
@@ -560,7 +595,7 @@ async function loadCart() {
 
     cartDiv.innerHTML += `
       <div class="cart-item">
-        <img src="${product.imageURL}" width="100">
+        <img src="${product.images ? product.images[0] : product.imageURL}" class="product-img" width=120>
         <p>${product.name}</p>
         <p>Price: $${product.price}</p>
         <p>Quantity: ${cartItem.quantity}</p>

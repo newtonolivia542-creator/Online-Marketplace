@@ -472,6 +472,7 @@ window.deleteProduct = async (productId) => {
 };
 
 //Detail page//
+
 if (window.location.pathname.includes("product-detail.html")) {
 
   const urlParams = new URLSearchParams(window.location.search);

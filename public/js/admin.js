@@ -210,8 +210,9 @@ async function loadOrders() {
 
   for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
-  
+
     try {
+      // ================= FETCH RELATED DATA =================
       let productName = "Unknown";
       if (order.productId) {
         const productSnap = await getDoc(doc(db, "products", order.productId));
@@ -219,7 +220,7 @@ async function loadOrders() {
           productName = productSnap.data().name;
         }
       }
-  
+
       let buyerEmail = "Unknown";
       if (order.userId) {
         const buyerSnap = await getDoc(doc(db, "users", order.userId));

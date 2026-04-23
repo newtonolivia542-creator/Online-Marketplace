@@ -122,7 +122,7 @@ async function loadUsers() {
     `;
     count++;
   });
-  // ✅ update active count
+  // update active count
   const activeCountEl = document.getElementById("activeCount");
   if (activeCountEl) {
     activeCountEl.innerText = activeCount;
@@ -227,7 +227,7 @@ async function loadOrders() {
           buyerEmail = buyerSnap.data().email;
         }
       }
-  
+
       let sellerEmail = "Unknown";
       if (order.sellerId) {
         const sellerSnap = await getDoc(doc(db, "users", order.sellerId));
@@ -235,24 +235,66 @@ async function loadOrders() {
           sellerEmail = sellerSnap.data().email;
         }
       }
-  
+
+      // ================= DATE HANDLING =================
       const created = formatDate(order.createdAt);
-  
+
       let shipped = "Not shipped";
       let delivered = "Not delivered";
-  
+
       if (order.shippedAt) {
         shipped = formatDate(order.shippedAt);
       } else if (order.status === "shipped" || order.status === "delivered") {
         shipped = "Shipped (no timestamp)";
       }
-  
+
       if (order.deliveredAt) {
         delivered = formatDate(order.deliveredAt);
       } else if (order.status === "delivered") {
         delivered = "Delivered (no timestamp)";
       }
-  
+
+      // ================= DELIVERY TIME CALC =================
+      let deliveryTime = "-";
+
+      if (order.createdAt && order.deliveredAt) {
+        try {
+          const start = order.createdAt.toDate
+            ? order.createdAt.toDate()
+            : new Date(order.createdAt);
+
+          const end = order.deliveredAt.toDate
+            ? order.deliveredAt.toDate()
+            : new Date(order.deliveredAt);
+
+          let diffMs = end - start;
+
+          const maxMs = 14 * 24 * 60 * 60 * 1000;
+
+          if (diffMs > maxMs) {
+            deliveryTime = "Over 2 weeks ❗";
+          } else {
+            const minutes = Math.floor(diffMs / (1000 * 60));
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+
+            if (days > 0) {
+              deliveryTime = `${days} day(s) ${hours % 24} hr`;
+            } else if (hours > 0) {
+              deliveryTime = `${hours} hr ${minutes % 60} min`;
+            } else {
+              deliveryTime = `${minutes} min`;
+            }
+          }
+
+        } catch {
+          deliveryTime = "Error";
+        }
+      }
+
+      const isLate = deliveryTime.includes("Over");
+
+      // ================= RENDER =================
       orderList.innerHTML += `
         <tr>
           <td>${productName}</td>
@@ -262,13 +304,23 @@ async function loadOrders() {
           <td>${order.status || "N/A"}</td>
           <td>${shipped}</td>
           <td>${delivered}</td>
+          <td style="
+            color:white;
+            background-color:${isLate ? 'red' : 'green'};
+            padding:4px 8px;
+            border-radius:6px;
+            text-align:center;
+          ">
+            ${deliveryTime}
+          </td>
         </tr>
       `;
-  
+
     } catch (err) {
       console.error("Error loading order:", err, order);
     }
   }
+}
 // ========BAN AND UNBAN FUNCTION ===========/
 window.banUser = async function(userId) {
   const reason = prompt("Enter reason for banning this user:");
@@ -299,4 +351,3 @@ window.unbanUser = async function(userId) {
   alert("User unbanned");
   loadUsers();
 };
-}

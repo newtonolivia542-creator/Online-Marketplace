@@ -31,6 +31,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 let allProducts = [];
+let editingProductId = null;
 
 //const storage = getStorage();
 
@@ -167,30 +168,42 @@ onAuthStateChanged(auth, async (user) => {
 const storage = getStorage();
 
 const productForm = document.getElementById("productForm");
+
 if (productForm) {
   productForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-const fileInput = document.getElementById("pImage");
-    //Changes Here//
-const files = fileInput.files;
+    const fileInput = document.getElementById("pImage");
+    const files = fileInput.files;
 
-if (files.length === 0) {
-  alert("Please choose at least one image");
-  return;
-}
+    let imageURLs = [];
 
-let imageURLs = [];
+    // 🔥 Upload new images if selected
+    if (files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
 
-for (let i = 0; i < files.length; i++) {
-  const file = files[i];
+        const storageRef = ref(storage, `products/${Date.now()}_${i}_${file.name}`);
+        await uploadBytes(storageRef, file);
 
-  const storageRef = ref(storage, `products/${Date.now()}_${i}_${file.name}`);
-  await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+        imageURLs.push(url);
+      }
+    }
 
-  const url = await getDownloadURL(storageRef);
-  imageURLs.push(url);
-}
+    // 🔥 If editing and no new images → keep old ones
+    if (editingProductId && imageURLs.length === 0) {
+      const docSnap = await getDoc(doc(db, "products", editingProductId));
+      const data = docSnap.data();
+
+      imageURLs = data.images || (data.imageURL ? [data.imageURL] : []);
+    }
+
+    // 🔥 If new product and no image → block
+    if (!editingProductId && imageURLs.length === 0) {
+      alert("Please upload at least one image");
+      return;
+    }
 
     const productData = {
       name: document.getElementById("pName").value,
@@ -202,15 +215,25 @@ for (let i = 0; i < files.length; i++) {
       createdAt: new Date()
     };
 
-    await addDoc(collection(db, "products"), productData);
+    // 🔥 UPDATE PRODUCT
+    if (editingProductId) {
+      await updateDoc(doc(db, "products", editingProductId), productData);
 
-    alert("Product posted!");
+      alert("Product updated!");
+      editingProductId = null;
+
+      document.querySelector("#productForm button").innerText = "Post to Marketplace";
+    }
+
+    // 🔥 ADD NEW PRODUCT
+    else {
+      await addDoc(collection(db, "products"), productData);
+      alert("Product posted!");
+    }
+
     productForm.reset();
-
- 
   });
 }
-
 /* =================LOAD CATEGORIES ON BUYER DASHBOARD =========*/
 
 const categoryFilter = document.getElementById("categoryFilter");
@@ -440,7 +463,10 @@ function loadSellerProducts() {
             product.images
               ? product.images.map(img => `<img src="${img}" width="80">`).join("")
               : `<img src="${product.imageURL}" width="80">`
-          }          
+          }
+          <button onclick="editProduct('${docSnap.id}')">
+            Edit
+          </button>          
           <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
         </li>
         <hr>
@@ -492,33 +518,18 @@ if (window.location.pathname.includes("product-detail.html")) {
       : [product.imageURL];
 
     document.getElementById("detailImage").src = productImages[0];
-    // 🔥 ADD IT HERE
+
     if (productImages.length <= 1) {
       document.getElementById("prevBtn").style.display = "none";
       document.getElementById("nextBtn").style.display = "none";
-}
+    }
+
     document.getElementById("detailName").innerText = product.name;
     document.getElementById("detailDesc").innerText = product.description;
     document.getElementById("detailPrice").innerText = product.price;
-
-    const gallery = document.getElementById("imageGallery");
-
-    if (gallery && product.images && product.images.length > 0) {
-      gallery.innerHTML = "";
-
-      product.images.forEach(img => {
-        gallery.innerHTML += `<img src="${img}" width="80" style="margin:5px; cursor:pointer;">`;
-      });
-
-      gallery.querySelectorAll("img").forEach(imgEl => {
-        imgEl.addEventListener("click", () => {
-          document.getElementById("detailImage").src = imgEl.src;
-        });
-      });
-    }
   }
 
-  // BUTTONS
+  // IMAGE BUTTONS
   document.getElementById("prevBtn").addEventListener("click", () => {
     if (productImages.length === 0) return;
 
@@ -541,29 +552,34 @@ if (window.location.pathname.includes("product-detail.html")) {
     document.getElementById("detailImage").src = productImages[currentImageIndex];
   });
 
-  loadProduct(); // ✅ NOW IN THE RIGHT PLACE
-}
-
+  // ✅ 🔥 ADD TO CART (MOVE IT HERE)
   const addToCartBtn = document.getElementById("addToCartBtn");
+
   if (addToCartBtn) {
     addToCartBtn.addEventListener("click", async () => {
       const quantity = Number(document.getElementById("detailQuantity").value);
+
       if (quantity < 1) return alert("Quantity must be at least 1");
 
       try {
         await addDoc(collection(db, "carts"), {
-          productId: productId,
+          productId: productId, // ✅ NOW WORKS
           userId: auth.currentUser.uid,
           quantity: quantity,
           addedAt: new Date()
         });
+
         alert("Product added to cart!");
-        window.location.href = "cart.html"; // redirect to cart page
+        window.location.href = "cart.html";
+
       } catch (err) {
         alert("Failed to add to cart: " + err.message);
       }
     });
   }
+
+  loadProduct();
+}
 
   // ===== PRODUCT DETAIL LOGIC END =====
 
@@ -819,3 +835,20 @@ if (resetBtn) {
     }
   });
 }
+// New function
+
+window.editProduct = async function(id) {
+  editingProductId = id;
+
+  const docSnap = await getDoc(doc(db, "products", id));
+  const product = docSnap.data();
+
+  document.getElementById("pName").value = product.name;
+  document.getElementById("pPrice").value = product.price;
+  document.getElementById("pDesc").value = product.description;
+  document.getElementById("pCategory").value = product.category;
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+
+  document.querySelector("#productForm button").innerText = "Update Product";
+};

@@ -1036,16 +1036,39 @@ async function loadBuyerMessages() {
   const snapshot = await getDocs(q);
   msgList.innerHTML = "";
 
-  snapshot.forEach(docSnap => {
+  for (const docSnap of snapshot.docs) {
     const msg = docSnap.data();
+
+    let productName = "Unknown Product";
+    let productImage = "";
+
+    // 🔥 FETCH PRODUCT DATA
+    if (msg.productId) {
+      const productDoc = await getDoc(doc(db, "products", msg.productId));
+
+      if (productDoc.exists()) {
+        const productData = productDoc.data();
+        productName = productData.name;
+
+        if (productData.images && productData.images.length > 0) {
+          productImage = productData.images[0];
+        }
+      }
+    }
 
     msgList.innerHTML += `
       <li style="margin-bottom:15px; border:1px solid #ddd; padding:10px; border-radius:8px;">
+        
+        ${productImage ? `<img src="${productImage}" width="80" style="border-radius:5px;"><br>` : ""}
+
+        <strong>${productName}</strong><br>
+
         <p>${msg.text}</p>
+
         <small>From seller: ${msg.senderId}</small>
       </li>
     `;
-  });
+  }
 }
 
 if (window.location.pathname.includes("messages.html")) {

@@ -143,6 +143,7 @@ onAuthStateChanged(auth, async (user) => {
       loadProducts();
       loadMyOrders();
       loadCart();
+      loadBuyerMessages();
     }
 
     if (role === "seller") {
@@ -969,10 +970,10 @@ async function loadSellerMessages() {
     ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
     : "";
   
-  msgList.innerHTML += `
+    msgList.innerHTML += `
     <li style="margin-bottom:15px; border:1px solid #ddd; padding:10px; border-radius:8px;">
-        
-      ${productImage ? `<img src="${productImage}" width="80" style="border-radius:5px;"><br>` : ""}
+      
+      ${productImage ? `<img src="${productImage}" width="80"><br>` : ""}
   
       <strong>${productName}</strong><br>
   
@@ -982,7 +983,71 @@ async function loadSellerMessages() {
   
       <small>From: ${msg.senderId}</small><br>
       <small>${time}</small>
+  
+      <br><br>
+  
+      <textarea id="reply-${docSnap.id}" placeholder="Reply..."></textarea><br>
+      <button onclick="replyMessage('${msg.senderId}', '${msg.productId}', 'reply-${docSnap.id}')">
+        Reply
+      </button>
+  
     </li>
   `;
  }
+}
+
+// =======REPLY FUNCTION ==================//
+window.replyMessage = async function(receiverId, productId, textareaId) {
+  const text = document.getElementById(textareaId).value;
+
+  if (!text) {
+    alert("Reply cannot be empty");
+    return;
+  }
+
+  try {
+    await addDoc(collection(db, "messages"), {
+      senderId: auth.currentUser.uid,
+      receiverId: receiverId,
+      productId: productId,
+      text: text,
+      createdAt: new Date()
+    });
+
+    alert("Reply sent!");
+    document.getElementById(textareaId).value = "";
+
+  } catch (err) {
+    alert("Error: " + err.message);
+  }
+};
+
+// ========LOADBUYER MESSAGE ===========//
+
+async function loadBuyerMessages() {
+  const msgList = document.getElementById("buyerMessages");
+  if (!msgList || !auth.currentUser) return;
+
+  const q = query(
+    collection(db, "messages"),
+    where("receiverId", "==", auth.currentUser.uid)
+  );
+
+  const snapshot = await getDocs(q);
+  msgList.innerHTML = "";
+
+  snapshot.forEach(docSnap => {
+    const msg = docSnap.data();
+
+    msgList.innerHTML += `
+      <li style="margin-bottom:15px; border:1px solid #ddd; padding:10px; border-radius:8px;">
+        <p>${msg.text}</p>
+        <small>From seller: ${msg.senderId}</small>
+      </li>
+    `;
+  });
+}
+
+if (window.location.pathname.includes("messages.html")) {
+  loadBuyerMessages();
 }

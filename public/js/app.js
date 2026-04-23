@@ -716,12 +716,54 @@ async function loadSellerOrders() {
     const productSnap = await getDoc(doc(db, "products", order.productId));
     const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
 
+    let shipBtn = "";
+    let deliverBtn = "";
+    
+    // 🟡 PENDING → show both
+    if (order.status === "pending") {
+      shipBtn = `<button onclick="markShipped('${docSnap.id}')">Ship</button>`;
+      deliverBtn = `<button onclick="markDelivered('${docSnap.id}')">Deliver</button>`;
+    }
+    
+    // 🔵 SHIPPED → show ONLY deliver
+    else if (order.status === "shipped") {
+      deliverBtn = `<button onclick="markDelivered('${docSnap.id}')">Deliver</button>`;
+    }
+    
+    // 🟢 DELIVERED → show NOTHING
+    else if (order.status === "delivered") {
+      shipBtn = "";
+      deliverBtn = "";
+    }
+
+    let deliveryInfo = "";
+
+    // 🟢 Calculate delivery time
+    if (order.deliveredAt && order.createdAt) {
+      const days = Math.floor(
+        (order.deliveredAt.toDate() - order.createdAt.toDate()) / (1000 * 60 * 60 * 24)
+      );
+    
+      deliveryInfo = `<br><small>Delivered in ${days} day(s)</small>`;
+    }
+    
+    // 🎨 Status color
+    let statusColor = "black";
+    if (order.status === "pending") statusColor = "orange";
+    else if (order.status === "shipped") statusColor = "blue";
+    else if (order.status === "delivered") statusColor = "green";
+    
+    // ✅ FINAL UI
     sellerOrders.innerHTML += `
       <li>
         <strong>${productName}</strong> |
-        Status: <strong>${order.status}</strong>
-        <button onclick="markShipped('${docSnap.id}')">Ship</button>
-        <button onclick="markDelivered('${docSnap.id}')">Deliver</button>
+        Status: <span style="color:${statusColor}; font-weight:bold;">
+          ${order.status}
+        </span>
+        ${deliveryInfo}
+        <br>
+        ${shipBtn}
+        ${deliverBtn}
       </li>
     `;
   }
@@ -758,6 +800,7 @@ window.markDelivered = async (orderId) => {
     alert("Failed to update order: " + err.message);
   }
 };
+
 /*============SOLD ITEMS HISTORY ===========*/
 async function loadSoldProducts() {
   const soldList = document.getElementById("soldProducts");

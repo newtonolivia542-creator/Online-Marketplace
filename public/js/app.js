@@ -143,7 +143,7 @@ onAuthStateChanged(auth, async (user) => {
       loadProducts();
       loadMyOrders();
       loadCart();
-      loadBuyerMessages();
+      //loadBuyerMessages();
     }
 
     if (role === "seller") {
@@ -936,67 +936,69 @@ async function loadSellerMessages() {
   const msgList = document.getElementById("sellerMessages");
   if (!msgList || !auth.currentUser) return;
 
-  const q = query(
-    collection(db, "messages"),
-    where("receiverId", "==", auth.currentUser.uid)
-  );
-
-  const snapshot = await getDocs(q);
+  const snapshot = await getDocs(collection(db, "messages"));
   msgList.innerHTML = "";
 
   for (const docSnap of snapshot.docs) {
     const msg = docSnap.data();
-  
-    // ✅ ALWAYS define productSnap first
-    const productSnap = await getDoc(doc(db, "products", msg.productId));
-  
+
+    // show BOTH sent & received
+    if (
+      msg.receiverId !== auth.currentUser.uid &&
+      msg.senderId !== auth.currentUser.uid
+    ) continue;
+
     let productName = "Unknown Product";
     let productImage = "";
-  
-    if (productSnap.exists()) {
-      const productData = productSnap.data();
-  
-      productName = productData.name;
-  
-      // ✅ handle both cases (single or multiple images)
-      if (productData.images && productData.images.length > 0) {
-        productImage = productData.images[0];
-      } else if (productData.imageURL) {
-        productImage = productData.imageURL;
+
+    if (msg.productId) {
+      const productDoc = await getDoc(doc(db, "products", msg.productId));
+
+      if (productDoc.exists()) {
+        const productData = productDoc.data();
+        productName = productData.name;
+
+        if (productData.images && productData.images.length > 0) {
+          productImage = productData.images[0];
+        }
+      }
     }
-  }
   
-  const time = msg.createdAt
-    ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-    : "";
+    const time = msg.createdAt
+      ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
+      : "";
   
+    const isMe = msg.senderId === auth.currentUser.uid;
+
     msgList.innerHTML += `
-    <li style="margin-bottom:15px; border:1px solid #ddd; padding:10px; border-radius:8px;">
-      
-      ${productImage ? `<img src="${productImage}" width="80"><br>` : ""}
-  
-      <strong>${productName}</strong><br>
-  
-      <p style="background:#f1f1f1; padding:8px; border-radius:5px;">
-        ${msg.text}
-      </p>
-  
-      <small>From: ${msg.senderId}</small><br>
-      <small>${time}</small>
-  
-      <br><br>
-  
-      <textarea id="reply-${docSnap.id}" placeholder="Reply..."></textarea><br>
-      <button onclick="replyMessage('${msg.senderId}', '${msg.productId}', 'reply-${docSnap.id}')">
-        Reply
-      </button>
-  
+      <li style="
+        margin-bottom:15px;
+        padding:10px;
+        border-radius:8px;
+        background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+        text-align:${isMe ? 'right' : 'left'};
+      ">
+        ${productImage ? `<img src="${productImage}" width="80"><br>` : ""}
+
+        <strong>${productName}</strong><br>
+
+        <p>${msg.text}</p>
+
+        <small>${isMe ? "You" : "Buyer"}</small><br><br>
+
+        ${!isMe ? `
+          <textarea id="reply-${docSnap.id}" placeholder="Reply..."></textarea><br>
+          <button onclick="replyMessage('${msg.senderId}', '${msg.productId}', 'reply-${docSnap.id}')">
+            Reply
+          </button>
+        ` : ""}
     </li>
   `;
- }
+  }
 }
 
-// =======REPLY FUNCTION ==================//
+// ================= REPLY FUNCTION ================= //
+
 window.replyMessage = async function(receiverId, productId, textareaId) {
   const text = document.getElementById(textareaId).value;
 
@@ -1005,44 +1007,40 @@ window.replyMessage = async function(receiverId, productId, textareaId) {
     return;
   }
 
-  try {
-    await addDoc(collection(db, "messages"), {
-      senderId: auth.currentUser.uid,
-      receiverId: receiverId,
-      productId: productId,
-      text: text,
-      createdAt: new Date()
-    });
+  await addDoc(collection(db, "messages"), {
+    senderId: auth.currentUser.uid,
+    receiverId: receiverId,
+    productId: productId,
+    participants: [auth.currentUser.uid, receiverId], // keep this
+    text: text,
+    createdAt: new Date()
+  });
 
-    alert("Reply sent!");
-    document.getElementById(textareaId).value = "";
-
-  } catch (err) {
-    alert("Error: " + err.message);
-  }
+  alert("Reply sent!");
+  document.getElementById(textareaId).value = "";
 };
 
-// ========LOADBUYER MESSAGE ===========//
+// ================= LOAD BUYER MESSAGES ================= //
 
 async function loadBuyerMessages() {
   const msgList = document.getElementById("buyerMessages");
   if (!msgList || !auth.currentUser) return;
 
-  const q = query(
-    collection(db, "messages"),
-    where("receiverId", "==", auth.currentUser.uid)
-  );
-
-  const snapshot = await getDocs(q);
+  const snapshot = await getDocs(collection(db, "messages"));
   msgList.innerHTML = "";
 
   for (const docSnap of snapshot.docs) {
     const msg = docSnap.data();
 
+    // show BOTH sent & received
+    if (
+      msg.senderId !== auth.currentUser.uid &&
+      msg.receiverId !== auth.currentUser.uid
+    ) continue;
+
     let productName = "Unknown Product";
     let productImage = "";
 
-    // 🔥 FETCH PRODUCT DATA
     if (msg.productId) {
       const productDoc = await getDoc(doc(db, "products", msg.productId));
 
@@ -1056,21 +1054,31 @@ async function loadBuyerMessages() {
       }
     }
 
+    const isMe = msg.senderId === auth.currentUser.uid;
+
     msgList.innerHTML += `
-      <li style="margin-bottom:15px; border:1px solid #ddd; padding:10px; border-radius:8px;">
-        
-        ${productImage ? `<img src="${productImage}" width="80" style="border-radius:5px;"><br>` : ""}
-
+      <li style="
+        margin-bottom:15px;
+        padding:10px;
+        border-radius:8px;
+        background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+        text-align:${isMe ? 'right' : 'left'};
+      ">
+        ${productImage ? `<img src="${productImage}" width="80"><br>` : ""}
         <strong>${productName}</strong><br>
-
         <p>${msg.text}</p>
-
-        <small>From seller: ${msg.senderId}</small>
+        <small>${isMe ? "You" : "Seller"}</small>
       </li>
     `;
   }
 }
 
+// ================= AUTH FIX (VERY IMPORTANT) ================= //
+
 if (window.location.pathname.includes("messages.html")) {
-  loadBuyerMessages();
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      loadBuyerMessages();
+    }
+  });
 }

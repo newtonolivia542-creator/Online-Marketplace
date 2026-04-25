@@ -408,12 +408,12 @@ async function loadMyOrders() {
   const total = price * quantity;
 
   const product = productSnap.exists() ? productSnap.data() : {};
-  const image = product.image || product.imageUrl || "";
+  const image = product.images?.[0] || product.imageURL || "";
 
   orderList.innerHTML += `
   <div class="order-details">
       <h3>${productName}</h3>
-      <img src="${product.imageURL}" class="product-img" style="width: 200px;">
+      <img src="${image}" class="product-img" style="width: 200px;">
 
       <p><strong>Date Ordered:</strong> ${orderDate}</p>
       <p><strong>Quantity:</strong> ${quantity}</p>
@@ -596,11 +596,20 @@ if (sendMessageBtn) {
       if (quantity < 1) return alert("Quantity must be at least 1");
 
       try {
-        await addDoc(collection(db, "carts"), {
-          productId: productId, // ✅ NOW WORKS
-          userId: auth.currentUser.uid,
-          quantity: quantity,
-          addedAt: new Date()
+        // 🔥 create unique conversation ID per product + users
+        const buyerId = auth.currentUser.uid;
+        const sellerId = product.sellerId;
+        
+        const users = [buyerId, sellerId].sort();
+        const conversationId = `${users[0]}_${users[1]}_${productId}`;
+        
+        await addDoc(collection(db, "messages"), {
+          senderId: buyerId,
+          receiverId: sellerId,
+          productId,
+          conversationId,
+          text,
+          createdAt: new Date()
         });
 
         alert("Product added to cart!");
@@ -930,7 +939,67 @@ window.editProduct = async function(id) {
   document.querySelector("#productForm button").innerText = "Update Product";
 };
 
-//  =========== Load Seller Message ============= //
+/* ================= CORE MESSAGING ================= */
+
+// 🔥 Always generate SAME conversation ID
+function getConversationId(user1, user2, productId) {
+  const users = [user1, user2].sort();
+  return `${users[0]}_${users[1]}_${productId}`;
+}
+
+// 🔥 Send message (USED EVERYWHERE)
+async function sendMessage(receiverId, productId, text) {
+  if (!text) {
+    alert("Message cannot be empty");
+    return;
+  }
+
+  const senderId = auth.currentUser.uid;
+  const conversationId = getConversationId(senderId, receiverId, productId);
+
+  await addDoc(collection(db, "messages"), {
+    senderId,
+    receiverId,
+    productId,
+    conversationId,
+    text,
+    createdAt: new Date()
+  });
+}
+
+// 🔥 Handle reply from UI
+window.handleReply = async function(receiverId, productId, textareaId) {
+  const input = document.getElementById(textareaId);
+  const text = input.value;
+
+  if (!text) {
+    alert("Reply cannot be empty");
+    return;
+  }
+
+  await sendMessage(receiverId, productId, text);
+
+  input.value = "";
+
+  // reload messages instantly
+  loadSellerMessages?.();
+  loadBuyerMessages?.();
+};
+
+// 🔥 Get other user in conversation
+function getOtherUserId(messages) {
+  const currentUser = auth.currentUser.uid;
+
+  for (let msg of messages) {
+    if (msg.senderId !== currentUser) return msg.senderId;
+    if (msg.receiverId !== currentUser) return msg.receiverId;
+  }
+
+  return null;
+}
+
+
+/* ================= LOAD SELLER MESSAGES ================= */
 
 async function loadSellerMessages() {
   const msgList = document.getElementById("sellerMessages");
@@ -939,88 +1008,73 @@ async function loadSellerMessages() {
   const snapshot = await getDocs(collection(db, "messages"));
   msgList.innerHTML = "";
 
-  for (const docSnap of snapshot.docs) {
+  const conversations = {};
+
+  snapshot.forEach(docSnap => {
     const msg = docSnap.data();
 
-    // show BOTH sent & received
     if (
       msg.receiverId !== auth.currentUser.uid &&
       msg.senderId !== auth.currentUser.uid
-    ) continue;
+    ) return;
 
-    let productName = "Unknown Product";
-    let productImage = "";
+    const convoId = msg.conversationId;
+    if (!conversations[convoId]) conversations[convoId] = [];
 
-    if (msg.productId) {
-      const productDoc = await getDoc(doc(db, "products", msg.productId));
+    conversations[convoId].push(msg);
+  });
 
-      if (productDoc.exists()) {
-        const productData = productDoc.data();
-        productName = productData.name;
+  for (const convoId in conversations) {
+    const msgs = conversations[convoId];
+    const firstMsg = msgs[0];
 
-        if (productData.images && productData.images.length > 0) {
-          productImage = productData.images[0];
-        }
-      }
-    }
-  
-    const time = msg.createdAt
-      ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-      : "";
-  
-    const isMe = msg.senderId === auth.currentUser.uid;
+    const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
+    const product = productDoc.exists() ? productDoc.data() : {};
+
+    let chatHTML = "";
+
+    msgs.forEach(msg => {
+      const isMe = msg.senderId === auth.currentUser.uid;
+
+      const time = msg.createdAt
+        ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
+        : "";
+
+      chatHTML += `
+        <div style="
+          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+          text-align:${isMe ? 'right' : 'left'};
+          margin:5px;
+          padding:8px;
+          border-radius:8px;
+        ">
+          ${msg.text}
+          <br>
+          <small style="font-size:10px; color:gray;">${time}</small>
+      </div>
+    `;
+    });
+
+    const productImage = product.images?.[0] || product.imageURL || "";
 
     msgList.innerHTML += `
-      <li style="
-        margin-bottom:15px;
-        padding:10px;
-        border-radius:8px;
-        background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-        text-align:${isMe ? 'right' : 'left'};
-      ">
-        ${productImage ? `<img src="${productImage}" width="80"><br>` : ""}
+      <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
+        <img src="${productImage}" width="80"><br>
+        <strong>${product.name || "Unknown Product"}</strong>
 
-        <strong>${productName}</strong><br>
+        <div>${chatHTML}</div>
 
-        <p>${msg.text}</p>
-
-        <small>${isMe ? "You" : "Buyer"}</small><br><br>
-
-        ${!isMe ? `
-          <textarea id="reply-${docSnap.id}" placeholder="Reply..."></textarea><br>
-          <button onclick="replyMessage('${msg.senderId}', '${msg.productId}', 'reply-${docSnap.id}')">
-            Reply
-          </button>
-        ` : ""}
-    </li>
-  `;
+        <textarea id="seller-${convoId}" placeholder="Reply..."></textarea><br>
+        <button onclick="handleReply('${getOtherUserId(msgs)}', '${firstMsg.productId}', 'seller-${convoId}')">
+          Reply
+        </button>
+      </li>
+    `;
   }
 }
 
-// ================= REPLY FUNCTION ================= //
 
-window.replyMessage = async function(receiverId, productId, textareaId) {
-  const text = document.getElementById(textareaId).value;
-
-  if (!text) {
-    alert("Reply cannot be empty");
-    return;
-  }
-
-  await addDoc(collection(db, "messages"), {
-    senderId: auth.currentUser.uid,
-    receiverId: receiverId,
-    productId: productId,
-    participants: [auth.currentUser.uid, receiverId], // keep this
-    text: text,
-    createdAt: new Date()
-  });
-
-  alert("Reply sent!");
-  document.getElementById(textareaId).value = "";
-};
-
-// ================= LOAD BUYER MESSAGES ================= //
+/* ================= LOAD BUYER MESSAGES ================= */
 
 async function loadBuyerMessages() {
   const msgList = document.getElementById("buyerMessages");
@@ -1029,51 +1083,73 @@ async function loadBuyerMessages() {
   const snapshot = await getDocs(collection(db, "messages"));
   msgList.innerHTML = "";
 
-  for (const docSnap of snapshot.docs) {
+  const conversations = {};
+
+  snapshot.forEach(docSnap => {
     const msg = docSnap.data();
 
-    // show BOTH sent & received
     if (
       msg.senderId !== auth.currentUser.uid &&
       msg.receiverId !== auth.currentUser.uid
-    ) continue;
+    ) return;
 
-    let productName = "Unknown Product";
-    let productImage = "";
+    const convoId = msg.conversationId;
+    if (!conversations[convoId]) conversations[convoId] = [];
 
-    if (msg.productId) {
-      const productDoc = await getDoc(doc(db, "products", msg.productId));
+    conversations[convoId].push(msg);
+  });
 
-      if (productDoc.exists()) {
-        const productData = productDoc.data();
-        productName = productData.name;
+  for (const convoId in conversations) {
+    const msgs = conversations[convoId];
+    const firstMsg = msgs[0];
 
-        if (productData.images && productData.images.length > 0) {
-          productImage = productData.images[0];
-        }
-      }
-    }
+    const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
+    const product = productDoc.exists() ? productDoc.data() : {};
 
-    const isMe = msg.senderId === auth.currentUser.uid;
+    let chatHTML = "";
+
+    msgs.forEach(msg => {
+      const isMe = msg.senderId === auth.currentUser.uid;
+
+      const time = msg.createdAt
+        ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
+        : "";
+
+      chatHTML += `
+        <div style="
+          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+          text-align:${isMe ? 'right' : 'left'};
+          margin:5px;
+          padding:8px;
+          border-radius:8px;
+        ">
+          ${msg.text}
+          <br>
+          <small style="font-size:10px; color:gray;">${time}</small>
+      </div>
+    `;
+    });
+
+    const productImage = product.images?.[0] || product.imageURL || "";
 
     msgList.innerHTML += `
-      <li style="
-        margin-bottom:15px;
-        padding:10px;
-        border-radius:8px;
-        background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-        text-align:${isMe ? 'right' : 'left'};
-      ">
-        ${productImage ? `<img src="${productImage}" width="80"><br>` : ""}
-        <strong>${productName}</strong><br>
-        <p>${msg.text}</p>
-        <small>${isMe ? "You" : "Seller"}</small>
+      <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
+        <img src="${productImage}" width="80"><br>
+        <strong>${product.name || "Unknown Product"}</strong>
+
+        <div>${chatHTML}</div>
+
+        <textarea id="buyer-${convoId}" placeholder="Reply..."></textarea><br>
+        <button onclick="handleReply('${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}')">
+          Reply
+        </button>
       </li>
     `;
   }
 }
 
-// ================= AUTH FIX (VERY IMPORTANT) ================= //
+
+/* ================= AUTH LOAD FOR MESSAGES PAGE ================= */
 
 if (window.location.pathname.includes("messages.html")) {
   onAuthStateChanged(auth, (user) => {

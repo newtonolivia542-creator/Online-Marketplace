@@ -1,4 +1,4 @@
-import { sendPasswordResetEmail } from 
+import { sendPasswordResetEmail } from
 "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import { auth, db } from "./firebase.js";
@@ -20,7 +20,10 @@ import {
   getDocs,
   deleteDoc,
   updateDoc,
-  onSnapshot
+  onSnapshot,
+  orderBy,
+  serverTimestamp,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
@@ -243,7 +246,7 @@ const categoryFilter = document.getElementById("categoryFilter");
 if (categoryFilter) {
   categoryFilter.addEventListener("change", () => {
     const selected = categoryFilter.value;
-    
+
     if (selected === "all") {
       displayProducts(allProducts);
     } else {
@@ -468,7 +471,7 @@ function loadSellerProducts() {
           }
           <button onclick="editProduct('${docSnap.id}')">
             Edit
-          </button>          
+          </button>
           <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
         </li>
         <hr>
@@ -518,13 +521,20 @@ if (sendMessageBtn) {
     const product = productSnap.data();
 
     try {
-      await addDoc(collection(db, "messages"), {
-        senderId: auth.currentUser.uid,
-        receiverId: product.sellerId,
-        productId: productId,
-        text: text,
-        createdAt: new Date()
-      });
+      const buyerId = auth.currentUser.uid;
+const sellerId = product.sellerId;
+
+const conversationId = [buyerId, sellerId, productId].sort().join("_");
+
+await addDoc(collection(db, "messages"), {
+  senderId: buyerId,
+  receiverId: sellerId,
+  productId: productId,
+  conversationId: conversationId,
+  text: text,
+  createdAt: serverTimestamp(),
+  deletedBy: []
+});
 
       alert("Message sent!");
       document.getElementById("messageInput").value = "";
@@ -599,18 +609,9 @@ if (sendMessageBtn) {
         // 🔥 create unique conversation ID per product + users
         const buyerId = auth.currentUser.uid;
         const sellerId = product.sellerId;
-        
+
         const users = [buyerId, sellerId].sort();
         const conversationId = `${users[0]}_${users[1]}_${productId}`;
-        
-        await addDoc(collection(db, "messages"), {
-          senderId: buyerId,
-          receiverId: sellerId,
-          productId,
-          conversationId,
-          text,
-          createdAt: new Date()
-        });
 
         alert("Product added to cart!");
         window.location.href = "cart.html";
@@ -761,18 +762,18 @@ async function loadSellerOrders() {
 
     let shipBtn = "";
     let deliverBtn = "";
-    
+
     // 🟡 PENDING → show both
     if (order.status === "pending") {
       shipBtn = `<button onclick="markShipped('${docSnap.id}')">Ship</button>`;
       deliverBtn = `<button onclick="markDelivered('${docSnap.id}')">Deliver</button>`;
     }
-    
+
     // 🔵 SHIPPED → show ONLY deliver
     else if (order.status === "shipped") {
       deliverBtn = `<button onclick="markDelivered('${docSnap.id}')">Deliver</button>`;
     }
-    
+
     // 🟢 DELIVERED → show NOTHING
     else if (order.status === "delivered") {
       shipBtn = "";
@@ -786,16 +787,16 @@ async function loadSellerOrders() {
       const days = Math.floor(
         (order.deliveredAt.toDate() - order.createdAt.toDate()) / (1000 * 60 * 60 * 24)
       );
-    
+
       deliveryInfo = `<br><small>Delivered in ${days} day(s)</small>`;
     }
-    
+
     // 🎨 Status color
     let statusColor = "black";
     if (order.status === "pending") statusColor = "orange";
     else if (order.status === "shipped") statusColor = "blue";
     else if (order.status === "delivered") statusColor = "green";
-    
+
     // FINAL UI
     sellerOrders.innerHTML += `
       <li>
@@ -948,23 +949,56 @@ function getConversationId(user1, user2, productId) {
 }
 
 // 🔥 Send message (USED EVERYWHERE)
-async function sendMessage(receiverId, productId, text) {
-  if (!text) {
-    alert("Message cannot be empty");
+async function sendMessage(productId, sellerId, inputId) {
+  const input = document.getElementById(inputId);
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  const user = auth.currentUser;
+  if (!user) {
+    alert("You must be logged in");
     return;
   }
 
-  const senderId = auth.currentUser.uid;
-  const conversationId = getConversationId(senderId, receiverId, productId);
+  // ✅ Create ONE stable conversation ID
+  let conversationId = [user.uid, sellerId, productId].sort().join("_");
 
-  await addDoc(collection(db, "messages"), {
-    senderId,
-    receiverId,
-    productId,
-    conversationId,
-    text,
-    createdAt: new Date()
-  });
+// 🔥 Check if conversation already exists (even if hidden)
+const q = query(
+  collection(db, "messages"),
+  where("productId", "==", productId)
+);
+
+const snapshot = await getDocs(q);
+
+snapshot.forEach(doc => {
+  const msg = doc.data();
+
+  if (
+    (msg.senderId === user.uid && msg.receiverId === sellerId) ||
+    (msg.senderId === sellerId && msg.receiverId === user.uid)
+  ) {
+    conversationId = msg.conversationId;
+  }
+});
+  try {
+    await addDoc(collection(db, "messages"), {
+      conversationId: conversationId,
+      productId: productId,
+      senderId: user.uid,
+      receiverId: sellerId,
+      text: text,
+      createdAt: serverTimestamp(),
+      deletedBy: []
+    });
+
+    input.value = "";
+
+    console.log("Message sent successfully");
+  } catch (error) {
+    console.error("Error sending message:", error);
+  }
 }
 
 // 🔥 Handle reply from UI
@@ -977,7 +1011,7 @@ window.handleReply = async function(receiverId, productId, textareaId) {
     return;
   }
 
-  await sendMessage(receiverId, productId, text);
+  await sendMessage(productId, receiverId, textareaId);
 
   input.value = "";
 
@@ -999,13 +1033,18 @@ function getOtherUserId(messages) {
 }
 
 
-/* ================= LOAD SELLER MESSAGES ================= */
+/* ================= LOAD SELLER MESSAGES ================= */;
 
 async function loadSellerMessages() {
   const msgList = document.getElementById("sellerMessages");
   if (!msgList || !auth.currentUser) return;
 
-  const snapshot = await getDocs(collection(db, "messages"));
+  const q = query(
+    collection(db, "messages"),
+    orderBy("createdAt", "asc") // oldest → newest
+  );
+
+  const snapshot = await getDocs(q);
   msgList.innerHTML = "";
 
   const conversations = {};
@@ -1024,16 +1063,45 @@ async function loadSellerMessages() {
     conversations[convoId].push(msg);
   });
 
-  for (const convoId in conversations) {
-    const msgs = conversations[convoId];
-    const firstMsg = msgs[0];
+  // ✅ GROUP BY PRODUCT (FIX DUPLICATES WITHOUT BREAKING REPLY)
+const productMap = {};
 
-    const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
-    const product = productDoc.exists() ? productDoc.data() : {};
+for (const convoId in conversations) {
+  const msgs = conversations[convoId];
+  const firstMsg = msgs[0];
+
+  // Only keep ONE conversation per product
+  if (!productMap[firstMsg.productId]) {
+    productMap[firstMsg.productId] = {
+      convoId: convoId,
+      messages: msgs
+    };
+  }
+}
+
+// ✅ NOW RENDER
+for (const productId in productMap) {
+  const convo = productMap[productId];
+  const msgs = convo.messages;
+  const convoId = convo.convoId;
+
+  const firstMsg = msgs[0];
+
+  const productDoc = await getDoc(doc(db, "products", productId));
+  const product = productDoc.exists() ? productDoc.data() : {};
+
+    //Sort message function//
+    msgs.sort((a, b) => {
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeA - timeB;
+    });
 
     let chatHTML = "";
 
     msgs.forEach(msg => {
+      if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
+
       const isMe = msg.senderId === auth.currentUser.uid;
 
       const time = msg.createdAt
@@ -1051,8 +1119,8 @@ async function loadSellerMessages() {
           ${msg.text}
           <br>
           <small style="font-size:10px; color:gray;">${time}</small>
-      </div>
-    `;
+        </div>
+      `;
     });
 
     const productImage = product.images?.[0] || product.imageURL || "";
@@ -1065,8 +1133,15 @@ async function loadSellerMessages() {
         <div>${chatHTML}</div>
 
         <textarea id="seller-${convoId}" placeholder="Reply..."></textarea><br>
+
         <button onclick="handleReply('${getOtherUserId(msgs)}', '${firstMsg.productId}', 'seller-${convoId}')">
           Reply
+        </button>
+
+        <!-- ✅ FIXED BUTTON -->
+        <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
+          style="background:red; color:white; margin-top:10px;">
+          Delete Chat
         </button>
       </li>
     `;
@@ -1101,6 +1176,23 @@ async function loadBuyerMessages() {
 
   for (const convoId in conversations) {
     const msgs = conversations[convoId];
+    msgs.sort((a, b) => {
+      const getTime = (msg) => {
+        if (!msg.createdAt) return 0;
+
+        if (msg.createdAt.seconds) {
+          return msg.createdAt.seconds;
+        }
+
+        if (msg.createdAt instanceof Date) {
+          return msg.createdAt.getTime() / 1000;
+        }
+
+        return 0;
+      };
+
+      return getTime(a) - getTime(b);
+    });
     const firstMsg = msgs[0];
 
     const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
@@ -1109,6 +1201,9 @@ async function loadBuyerMessages() {
     let chatHTML = "";
 
     msgs.forEach(msg => {
+      if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
+      console.log("deletedBy:", msg.deletedBy);
+
       const isMe = msg.senderId === auth.currentUser.uid;
 
       const time = msg.createdAt
@@ -1143,6 +1238,10 @@ async function loadBuyerMessages() {
         <button onclick="handleReply('${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}')">
           Reply
         </button>
+        <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
+          style="background:red; color:white; margin-top:10px;">
+          Delete Chat
+        </button>
       </li>
     `;
   }
@@ -1158,3 +1257,35 @@ if (window.location.pathname.includes("messages.html")) {
     }
   });
 }
+/* =========== Delect Conversation ========== */
+window.deleteChat = async function(conversationId, productId) {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  if (!confirm("Delete this chat?")) return;
+
+  const q = query(
+    collection(db, "messages"),
+    where("conversationId", "==", conversationId),
+    where("productId", "==", productId)
+  );
+
+  const snapshot = await getDocs(q);
+  const batch = writeBatch(db);
+
+  snapshot.forEach((docSnap) => {
+    const data = docSnap.data();
+    const deletedBy = data.deletedBy || [];
+
+    if (!deletedBy.includes(user.uid)) {
+      batch.update(doc(db, "messages", docSnap.id), {
+        deletedBy: [...deletedBy, user.uid]
+      });
+    }
+  });
+
+  await batch.commit();
+
+  loadSellerMessages?.();
+  loadBuyerMessages?.();
+};

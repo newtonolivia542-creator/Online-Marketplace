@@ -411,7 +411,8 @@ async function loadMyOrders() {
   const total = price * quantity;
 
   const product = productSnap.exists() ? productSnap.data() : {};
-  const image = product.images?.[0] || product.imageURL || "https://placehold.co/200";
+  const image = product.images?.[0] || product.imageURL || "";
+
   orderList.innerHTML += `
   <div class="order-details">
       <h3>${productName}</h3>

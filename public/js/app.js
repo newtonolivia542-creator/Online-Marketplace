@@ -461,27 +461,53 @@ function loadSellerProducts() {
   
       const productDiv = document.createElement("div");
   
-      productDiv.innerHTML = `
-        <img src="${
-          product.images
-            ? product.images[0]
-            : product.imageURL
-        }">
-  
-        <strong>${product.name}</strong>
-        <p>${product.description}</p>
-        <span>$${product.price}</span>
-  
-        <div class="btn-group">
-          <button onclick="editProduct('${docSnap.id}')">Edit</button>
-          <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
-        </div>
-      `;
+      const images = product.images || [product.imageURL];
+
+    productDiv.innerHTML = `
+      <div class="image-slider">
+        <button class="prev">◀</button>
+        <img src="${images[0]}" />
+        <button class="next">▶</button>
+      </div>
+
+      <strong>${product.name}</strong>
+      <p>${product.description}</p>
+      <span>$${product.price}</span>
+
+      <div class="btn-group">
+        <button onclick="editProduct('${docSnap.id}')">Edit</button>
+      <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
+      </div>
+    `;
+
+    const imgElement = productDiv.querySelector("img");
+    const prevBtn = productDiv.querySelector(".prev");
+    const nextBtn = productDiv.querySelector(".next");
+    
+    let index = 0;
+    
+    prevBtn.onclick = () => {
+      index = (index - 1 + images.length) % images.length;
+      imgElement.src = images[index];
+    };
+    
+    nextBtn.onclick = () => {
+      index = (index + 1) % images.length;
+      imgElement.src = images[index];
+    };
+    
+    // Hide arrows if only 1 image
+    if (images.length === 1) {
+      prevBtn.style.display = "none";
+      nextBtn.style.display = "none";
+    }
   
       sellerProducts.appendChild(productDiv);
     });
   });
 }
+
+// Delect Fuction//
 
 window.deleteProduct = async (productId) => {
   const confirmDelete = confirm("Are you sure you want to delete this product?");

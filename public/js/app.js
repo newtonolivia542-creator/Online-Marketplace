@@ -495,6 +495,15 @@ function loadSellerProducts() {
       index = (index + 1) % images.length;
       imgElement.src = images[index];
     };
+    nextBtn.onclick = () => {
+      imgElement.style.opacity = 0;
+    
+      setTimeout(() => {
+        index = (index + 1) % images.length;
+        imgElement.src = images[index];
+        imgElement.style.opacity = 1;
+      }, 150);
+    };
     
     // Hide arrows if only 1 image
     if (images.length === 1) {

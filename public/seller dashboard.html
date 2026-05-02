@@ -55,22 +55,27 @@
         Post to Marketplace
       </button>
     </form>
-  </section>
+  <!-- /section-->
 
-  <section id="my-listings" style="margin-top: 40px;">
+  <!-- LEFT -->
+  <section id="my-listings">
     <h3>Your Active Listings</h3>
-    <div id="sellerProducts">
-      <p>Loading your products...</p>
-    </div>
+    <div id="sellerProducts"></div>
   </section>
+
+  <!-- RIGHT -->
+  <section id="messages-section">
+    <h3>Messages</h3>
+    <ul id="sellerMessages"></ul>
+  </section>
+
+  <!-- RIGHT (under messages) -->
+  <section id="sold-section">
+    <h3>Sold Items History</h3>
+    <ul id="soldProducts"></ul>
+  </section>
+
 </main>
-
-
-<h2>Sold Items History</h2>
-<ul id="soldProducts"></ul>
-
-<h2>Messages</h2>
-<ul id="sellerMessages"></ul>
 
 <script type="module" src="../js/app.js"></script>
 </body>

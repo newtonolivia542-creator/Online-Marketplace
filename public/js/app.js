@@ -982,12 +982,12 @@ window.editProduct = async function(id) {
 
 // 🔥 Always generate SAME conversation ID
 function getConversationId(user1, user2, productId) {
-  const users = [user1, user2].sort();
-  return `${users[0]}_${users[1]}_${productId}`;
+  const sortedUsers = [user1, user2].sort(); // ONLY sort users
+  return `${sortedUsers[0]}_${sortedUsers[1]}_${productId}`;
 }
 
 // 🔥 Send message (USED EVERYWHERE)
-async function sendMessage(productId, sellerId, inputId) {
+async function sendMessage(productId, otherUserId, inputId, existingConvoId = null) {
   const input = document.getElementById(inputId);
   const text = input.value.trim();
 
@@ -999,61 +999,45 @@ async function sendMessage(productId, sellerId, inputId) {
     return;
   }
 
-  // ✅ Create ONE stable conversation ID
-  let conversationId = [user.uid, sellerId, productId].sort().join("_");
+  // 🔥 USE EXISTING conversationId IF AVAILABLE
+  const conversationId =
+    existingConvoId ||
+    getConversationId(user.uid, otherUserId, productId);
 
-// 🔥 Check if conversation already exists (even if hidden)
-const q = query(
-  collection(db, "messages"),
-  where("productId", "==", productId)
-);
-
-const snapshot = await getDocs(q);
-
-snapshot.forEach(doc => {
-  const msg = doc.data();
-
-  if (
-    (msg.senderId === user.uid && msg.receiverId === sellerId) ||
-    (msg.senderId === sellerId && msg.receiverId === user.uid)
-  ) {
-    conversationId = msg.conversationId;
-  }
-});
   try {
     await addDoc(collection(db, "messages"), {
-      conversationId: conversationId,
-      productId: productId,
+      conversationId,
+      productId,
       senderId: user.uid,
-      receiverId: sellerId,
-      text: text,
+      receiverId: otherUserId,
+      text,
       createdAt: serverTimestamp(),
       deletedBy: []
     });
 
     input.value = "";
+    console.log("Message sent in convo:", conversationId);
 
-    console.log("Message sent successfully");
   } catch (error) {
     console.error("Error sending message:", error);
   }
 }
 
 // 🔥 Handle reply from UI
-window.handleReply = async function(receiverId, productId, textareaId) {
+window.handleReply = async function(convoId, receiverId, productId, textareaId) {
   const input = document.getElementById(textareaId);
-  const text = input.value;
+  const text = input.value.trim();
 
   if (!text) {
     alert("Reply cannot be empty");
     return;
   }
 
-  await sendMessage(productId, receiverId, textareaId);
+  // 🔥 PASS convoId HERE
+  await sendMessage(productId, receiverId, textareaId, convoId);
 
   input.value = "";
 
-  // reload messages instantly
   loadSellerMessages?.();
   loadBuyerMessages?.();
 };
@@ -1095,38 +1079,24 @@ async function loadSellerMessages() {
       msg.senderId !== auth.currentUser.uid
     ) return;
 
-    const convoId = msg.conversationId;
+    const users = [msg.senderId, msg.receiverId].sort().join("_");
+    const convoId = `${users}_${msg.productId}`;
     if (!conversations[convoId]) conversations[convoId] = [];
 
     conversations[convoId].push(msg);
   });
 
   // ✅ GROUP BY PRODUCT (FIX DUPLICATES WITHOUT BREAKING REPLY)
-const productMap = {};
-
-for (const convoId in conversations) {
-  const msgs = conversations[convoId];
-  const firstMsg = msgs[0];
-
-  // Only keep ONE conversation per product
-  if (!productMap[firstMsg.productId]) {
-    productMap[firstMsg.productId] = {
-      convoId: convoId,
-      messages: msgs
-    };
-  }
-}
+  const convoList = Object.values(conversations);
 
 // ✅ NOW RENDER
-for (const productId in productMap) {
-  const convo = productMap[productId];
-  const msgs = convo.messages;
-  const convoId = convo.convoId;
-
+for (const msgs of convoList) {
+  const convoId = msgs[0].conversationId;
   const firstMsg = msgs[0];
 
-  const productDoc = await getDoc(doc(db, "products", productId));
+  const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
   const product = productDoc.exists() ? productDoc.data() : {};
+  //console.log("Conversation ID:", msgs[0].conversationId);//
 
     //Sort message function//
     msgs.sort((a, b) => {
@@ -1172,7 +1142,7 @@ for (const productId in productMap) {
 
         <textarea id="seller-${convoId}" placeholder="Reply..."></textarea><br>
 
-        <button onclick="handleReply('${getOtherUserId(msgs)}', '${firstMsg.productId}', 'seller-${convoId}')">
+        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'seller-${convoId}')">
           Reply
         </button>
 
@@ -1189,48 +1159,47 @@ for (const productId in productMap) {
 
 /* ================= LOAD BUYER MESSAGES ================= */
 
-async function loadBuyerMessages() {
+function loadBuyerMessages() {
   const msgList = document.getElementById("buyerMessages");
   if (!msgList || !auth.currentUser) return;
 
-  const snapshot = await getDocs(collection(db, "messages"));
+onSnapshot(collection(db, "messages"), async (snapshot) => {
   msgList.innerHTML = "";
 
   const conversations = {};
 
+  // ✅ ONLY ONE LOOP (correct one)
   snapshot.forEach(docSnap => {
     const msg = docSnap.data();
 
     if (
-      msg.senderId !== auth.currentUser.uid &&
-      msg.receiverId !== auth.currentUser.uid
+      msg.receiverId !== auth.currentUser.uid &&
+      msg.senderId !== auth.currentUser.uid
     ) return;
 
-    const convoId = msg.conversationId;
+    // 🔥 ALWAYS recompute conversationId
+    const users = [msg.senderId, msg.receiverId].sort().join("_");
+    const convoId = `${users}_${msg.productId}`;
     if (!conversations[convoId]) conversations[convoId] = [];
 
     conversations[convoId].push(msg);
   });
 
+  // ✅ render
   for (const convoId in conversations) {
     const msgs = conversations[convoId];
+
     msgs.sort((a, b) => {
       const getTime = (msg) => {
         if (!msg.createdAt) return 0;
-
-        if (msg.createdAt.seconds) {
-          return msg.createdAt.seconds;
-        }
-
-        if (msg.createdAt instanceof Date) {
-          return msg.createdAt.getTime() / 1000;
-        }
-
+        if (msg.createdAt.seconds) return msg.createdAt.seconds;
+        if (msg.createdAt instanceof Date) return msg.createdAt.getTime() / 1000;
         return 0;
       };
 
       return getTime(a) - getTime(b);
     });
+
     const firstMsg = msgs[0];
 
     const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
@@ -1240,7 +1209,6 @@ async function loadBuyerMessages() {
 
     msgs.forEach(msg => {
       if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
-      console.log("deletedBy:", msg.deletedBy);
 
       const isMe = msg.senderId === auth.currentUser.uid;
 
@@ -1259,8 +1227,8 @@ async function loadBuyerMessages() {
           ${msg.text}
           <br>
           <small style="font-size:10px; color:gray;">${time}</small>
-      </div>
-    `;
+        </div>
+      `;
     });
 
     const productImage = product.images?.[0] || product.imageURL || "";
@@ -1273,9 +1241,11 @@ async function loadBuyerMessages() {
         <div>${chatHTML}</div>
 
         <textarea id="buyer-${convoId}" placeholder="Reply..."></textarea><br>
-        <button onclick="handleReply('${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}')">
+
+        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}')">
           Reply
         </button>
+
         <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
           style="background:red; color:white; margin-top:10px;">
           Delete Chat

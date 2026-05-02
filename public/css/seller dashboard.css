@@ -156,61 +156,6 @@ button:nth-of-type(2) {
   }
 }
 
-#myProducts {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 15px;
-  }
-  
-  #myProducts > div {
-    background: #fff;
-    border-radius: 12px;
-    padding: 10px;
-    box-shadow: 0 6px 15px rgba(0,0,0,0.08);
-  
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  
-    transition: 0.2s ease;
-  }
-  
-  #myProducts > div:hover {
-    transform: translateY(-4px);
-  }
-  
-  /* Images */
-  #myProducts img {
-    width: 100%;
-    height: 120px;
-    object-fit: cover;
-    border-radius: 10px;
-  }
-  
-  /* Title */
-  #myProducts strong {
-    font-size: 14px;
-    margin-top: 8px;
-  }
-  
-  /* Price */
-  #myProducts span {
-    font-weight: bold;
-    color: #6366f1;
-  }
-  #myProducts button {
-    margin-top: 5px;
-    padding: 6px;
-    font-size: 12px;
-  }
-  
-  #myProducts button:first-of-type {
-    background: #6366f1;
-  }
-  
-  #myProducts button:last-of-type {
-    background: #ef4444;
-  }
 
   #soldProducts, #sellerMessages {
     max-width: 1200px;

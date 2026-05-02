@@ -15,6 +15,18 @@
     Back to Store
   </button>
 
+  <div id="chatBox" style="display:none; border:1px solid #ccc; padding:15px;">
+    <h3 id="chatTitle"></h3>
+  
+    <div id="chatMessages"></div>
+  
+    <textarea id="chatInput" placeholder="Type message..."></textarea><br>
+  
+    <button onclick="sendChatReply()">Send</button>
+    <button onclick="deleteCurrentChat()">Delete</button>
+    <button onclick="closeChat()">Close</button>
+  </div>
+
 
   <script type="module" src="../js/app.js"></script>
 </body>

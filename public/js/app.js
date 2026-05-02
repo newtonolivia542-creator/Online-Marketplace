@@ -411,8 +411,7 @@ async function loadMyOrders() {
   const total = price * quantity;
 
   const product = productSnap.exists() ? productSnap.data() : {};
-  const image = product.images?.[0] || product.imageURL || "";
-
+  const image = product.images?.[0] || product.imageURL || "https://placehold.co/200";
   orderList.innerHTML += `
   <div class="order-details">
       <h3>${productName}</h3>
@@ -443,8 +442,8 @@ async function loadMyOrders() {
 /* ================= LOAD SELLER PRODUCTS ================= */
 
 function loadSellerProducts() {
-  const myProducts = document.getElementById("myProducts");
-  if (!myProducts || !auth.currentUser) return;
+  const sellerProducts = document.getElementById("sellerProducts");
+  if (!sellerProducts || !auth.currentUser) return;
 
   const q = query(
     collection(db, "products"),
@@ -452,30 +451,33 @@ function loadSellerProducts() {
   );
 
   onSnapshot(q, (snapshot) => {
-    myProducts.innerHTML = "";
-
+    sellerProducts.innerHTML = "";
+  
     snapshot.forEach(docSnap => {
       const product = docSnap.data();
-
-      // show ONLY active (not sold)
+  
       if (product.sold === true) return;
-
-      myProducts.innerHTML += `
-        <li>
-          <strong>${product.name}</strong> — $${product.price}<br>
-          ${product.description}<br><br>
-          ${
-            product.images
-              ? product.images.map(img => `<img src="${img}" width="80">`).join("")
-              : `<img src="${product.imageURL}" width="80">`
-          }
-          <button onclick="editProduct('${docSnap.id}')">
-            Edit
-          </button>
+  
+      const productDiv = document.createElement("div");
+  
+      productDiv.innerHTML = `
+        <img src="${
+          product.images
+            ? product.images[0]
+            : product.imageURL
+        }">
+  
+        <strong>${product.name}</strong>
+        <p>${product.description}</p>
+        <span>$${product.price}</span>
+  
+        <div class="btn-group">
+          <button onclick="editProduct('${docSnap.id}')">Edit</button>
           <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
-        </li>
-        <hr>
+        </div>
       `;
+  
+      sellerProducts.appendChild(productDiv);
     });
   });
 }

@@ -453,14 +453,14 @@ function loadSellerProducts() {
 
   onSnapshot(q, (snapshot) => {
     sellerProducts.innerHTML = "";
-  
+
     snapshot.forEach(docSnap => {
       const product = docSnap.data();
-  
+
       if (product.sold === true) return;
-  
+
       const productDiv = document.createElement("div");
-  
+
       const images = product.images || [product.imageURL];
 
     productDiv.innerHTML = `
@@ -483,34 +483,34 @@ function loadSellerProducts() {
     const imgElement = productDiv.querySelector("img");
     const prevBtn = productDiv.querySelector(".prev");
     const nextBtn = productDiv.querySelector(".next");
-    
+
     let index = 0;
-    
+
     prevBtn.onclick = () => {
       index = (index - 1 + images.length) % images.length;
       imgElement.src = images[index];
     };
-    
+
     nextBtn.onclick = () => {
       index = (index + 1) % images.length;
       imgElement.src = images[index];
     };
     nextBtn.onclick = () => {
       imgElement.style.opacity = 0;
-    
+
       setTimeout(() => {
         index = (index + 1) % images.length;
         imgElement.src = images[index];
         imgElement.style.opacity = 1;
       }, 150);
     };
-    
+
     // Hide arrows if only 1 image
     if (images.length === 1) {
       prevBtn.style.display = "none";
       nextBtn.style.display = "none";
     }
-  
+
       sellerProducts.appendChild(productDiv);
     });
   });
@@ -1159,11 +1159,11 @@ for (const msgs of convoList) {
 
 /* ================= LOAD BUYER MESSAGES ================= */
 
-function loadBuyerMessages() {
+async function loadBuyerMessages() {
   const msgList = document.getElementById("buyerMessages");
   if (!msgList || !auth.currentUser) return;
 
-onSnapshot(collection(db, "messages"), async (snapshot) => {
+  const snapshot = await getDocs(collection(db, "messages"));
   msgList.innerHTML = "";
 
   const conversations = {};

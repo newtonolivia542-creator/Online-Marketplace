@@ -16,12 +16,12 @@ body {
 
 /* HEADER */
 header {
-  background: #220933;
+  background: hsl(216, 84%, 48%);
   color: white;
   padding: 1rem 2rem;
   text-align: center;
   font-size: 1.3rem;
-  font-weight: 600;
+  font-weight: 300;
 }
 
 /* CONTAINER */
@@ -398,4 +398,22 @@ body {
   display: flex;
   gap: 10px;
   margin-top: 10px;
+}
+.cartItems {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  background: white;
+  padding: 15px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+/* IMAGE */
+.cartItems img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
 }

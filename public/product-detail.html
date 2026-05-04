@@ -6,7 +6,17 @@
   <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
-  <h1>Product Detail</h1>
+  <header class="navbar">
+    <h2 id="welcome"></h2>
+  
+    <div class="nav-actions">
+      <button id="logoutBtn" style="color: white; background-color: rgb(205, 42, 42);">Logout</button>
+      <br>
+      <a href="buyer dashboard.html" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">Back To Shop</a>
+    </div>
+  </header>
+
+  <h1 style="text-align: center;">Product Detail</h1>
   <div id="productDetail">
     <div id="imageSlider" class="slider">
       <button id="prevBtn" class="slider-btn left">❮</button>
@@ -29,8 +39,10 @@
     <button id="sendMessageBtn">Send Message</button>
   </div>
 
+  <div class="bottom-actions">
   <button onclick="window.location.href='buyer dashboard.html'">Back to Store</button>
   <button onclick="window.location.href='cart.html'">View My Cart</button>
+</div>
 
   <script type="module" src="../js/app.js"></script>
 </body>

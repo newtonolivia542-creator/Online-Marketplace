@@ -223,3 +223,30 @@ button:nth-of-type(2) {
   #sold-section {
     grid-column: 2;
   }
+
+  /* ================= CART PAGE ================= */
+
+/* HEADER FIX */
+.navbar {
+  background: #1e3a8a;
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* MAIN CART AREA */
+#cartItems {
+  max-width: 900px;
+  margin: 30px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}

@@ -1185,6 +1185,7 @@ async function loadBuyerMessages() {
   // ONLY ONE LOOP (correct one)
   snapshot.forEach(docSnap => {
     const msg = docSnap.data();
+    if (!msg.productId) return;
 
     if (
       msg.receiverId !== auth.currentUser.uid &&
@@ -1216,8 +1217,20 @@ async function loadBuyerMessages() {
 
     const firstMsg = msgs[0];
 
+    //const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
+    //const product = productDoc.exists() ? productDoc.data() : {};
+    let product = {};
+
+      if (firstMsg.productId) {
+        try {
     const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
-    const product = productDoc.exists() ? productDoc.data() : {};
+        if (productDoc.exists()) {
+          product = productDoc.data();
+        }
+      } catch (err) {
+        console.warn("Bad productId:", firstMsg.productId);
+      }
+    }
 
     let chatHTML = "";
 

@@ -1223,7 +1223,7 @@ async function loadBuyerMessages() {
 
       if (firstMsg.productId) {
         try {
-    const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
+        const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
         if (productDoc.exists()) {
           product = productDoc.data();
         }
@@ -1231,6 +1231,7 @@ async function loadBuyerMessages() {
         console.warn("Bad productId:", firstMsg.productId);
       }
     }
+
 
     let chatHTML = "";
 

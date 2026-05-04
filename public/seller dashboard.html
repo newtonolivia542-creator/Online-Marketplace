@@ -12,70 +12,21 @@
     <button id="logoutBtn" style="background-color: hwb(0 30% 8%); color: white; padding: 10px 20px; border: none; cursor: pointer;">Logout</button>
   </nav>
 
-<main>
-  <section id="stats-summary">
+  <button onclick="window.location.href='seller-upload.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">Upload Products</button>
+    <button onclick="window.location.href='seller-messages.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">View Messages</button>
 
-    <h2>Orders from Buyers</h2>
-    <ul id="sellerOrders"></ul>
-  </section>
+    <button onclick="window.location.href='seller-orders.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">
+      View Orders
+    </button>
+    <button onclick="window.location.href='seller-history.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">View History</button>
 
-  <hr>
 
-    <form id="productForm">
-      <h2>Upload Products</h2>
-      <label for="pName">Product Name</label><br>
-      <input type="text" id="pName" placeholder="e.g. Vintage Leather Bag" required style="width: 100%; margin-bottom: 15px;" />
-      
-      <label for="pPrice">Price ($)</label><br>
-      <input type="number" id="pPrice" placeholder="0.00" step="0.01" required style="width: 100%; margin-bottom: 15px;" />
-      
-      <label for="pDesc">Product Description</label><br>
-      <textarea id="pDesc" placeholder="Describe your item..." style="width: 100%; height: 100px; margin-bottom: 15px;">
-      </textarea>
 
-      <label for="pImage">Image ($)</label><br>
-      <input type="file" id="pImage" name="imageUpload" accept="images/*" multiple>
-      
-      <div id="imageGallery"></div>
-      
-      <label for="pCategory">Category</label><br>
-      <select id="pCategory" style="width: 100%; margin-bottom: 20px;">
-        <option value="electronics">Electronics</option>
-        <option value="fashion">Fashion</option>
-        <option value="home">Home</option>
-        <option value="cosmetics">Cosmetics</option>
-        <option value="plants">Plants</option>
-        <option value="food">Food</option>
-        <option value="other">Other</option>
-      </select>
-
-      <div id="productList"></div>
-
-      <button type="submit" style="background-color: hsl(247, 91%, 67%); color: white; padding: 10px 20px; border: none; cursor: pointer; width: 100%;">
-        Post to Marketplace
-      </button>
-    </form>
-  <!-- /section-->
-
-  <!-- LEFT -->
   <section id="my-listings">
     <h3>Your Active Listings</h3>
     <div id="sellerProducts"></div>
   </section>
 
-  <!-- RIGHT -->
-  <section id="messages-section">
-    <h3>Messages</h3>
-    <ul id="sellerMessages"></ul>
-  </section>
-
-  <!-- RIGHT (under messages) -->
-  <section id="sold-section">
-    <h3>Sold Items History</h3>
-    <ul id="soldProducts"></ul>
-  </section>
-
-</main>
 
 <script type="module" src="../js/app.js"></script>
 </body>

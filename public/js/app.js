@@ -475,7 +475,7 @@ function loadSellerProducts() {
       <span>$${product.price}</span>
 
       <div class="btn-group">
-        <button onclick="editProduct('${docSnap.id}')">Edit</button>
+        <button onclick="goToEdit('${docSnap.id}')">Edit</button>
       <button onclick="deleteProduct('${docSnap.id}')">Delete</button>
       </div>
     `;
@@ -515,6 +515,30 @@ function loadSellerProducts() {
     });
   });
 }
+//======New Edit Function ===========//
+window.goToEdit = function(id) {
+  window.location.href = `seller-upload.html?edit=${id}`;
+};
+async function checkEditMode() {
+  const params = new URLSearchParams(window.location.search);
+  const editId = params.get("edit");
+
+  if (!editId) return;
+
+  editingProductId = editId;
+
+  const docSnap = await getDoc(doc(db, "products", editId));
+  const product = docSnap.data();
+
+  document.getElementById("pName").value = product.name;
+  document.getElementById("pPrice").value = product.price;
+  document.getElementById("pDesc").value = product.description;
+  document.getElementById("pCategory").value = product.category;
+
+  document.querySelector("#productForm button").innerText = "Update Product";
+}
+
+window.addEventListener("DOMContentLoaded", checkEditMode);
 
 // Delect Fuction//
 
@@ -554,7 +578,7 @@ if (sendMessageBtn) {
       return;
     }
 
-    // 🔥 Get product info to find seller
+    // Get product info to find seller
     const productSnap = await getDoc(doc(db, "products", productId));
     const product = productSnap.data();
 
@@ -634,7 +658,7 @@ await addDoc(collection(db, "messages"), {
     document.getElementById("detailImage").src = productImages[currentImageIndex];
   });
 
-  // ✅ 🔥 ADD TO CART (MOVE IT HERE)
+  //  ADD TO CART (MOVE IT HERE)
   const addToCartBtn = document.getElementById("addToCartBtn");
 
   if (addToCartBtn) {
@@ -644,7 +668,7 @@ await addDoc(collection(db, "messages"), {
       if (quantity < 1) return alert("Quantity must be at least 1");
 
       try {
-        // 🔥 create unique conversation ID per product + users
+        // create unique conversation ID per product + users
         const buyerId = auth.currentUser.uid;
         const sellerId = product.sellerId;
 
@@ -801,18 +825,18 @@ async function loadSellerOrders() {
     let shipBtn = "";
     let deliverBtn = "";
 
-    // 🟡 PENDING → show both
+    // PENDING → show both
     if (order.status === "pending") {
       shipBtn = `<button onclick="markShipped('${docSnap.id}')">Ship</button>`;
       deliverBtn = `<button onclick="markDelivered('${docSnap.id}')">Deliver</button>`;
     }
 
-    // 🔵 SHIPPED → show ONLY deliver
+    // SHIPPED → show ONLY deliver
     else if (order.status === "shipped") {
       deliverBtn = `<button onclick="markDelivered('${docSnap.id}')">Deliver</button>`;
     }
 
-    // 🟢 DELIVERED → show NOTHING
+    // DELIVERED → show NOTHING
     else if (order.status === "delivered") {
       shipBtn = "";
       deliverBtn = "";
@@ -820,7 +844,7 @@ async function loadSellerOrders() {
 
     let deliveryInfo = "";
 
-    // 🟢 Calculate delivery time
+    // Calculate delivery time
     if (order.deliveredAt && order.createdAt) {
       const days = Math.floor(
         (order.deliveredAt.toDate() - order.createdAt.toDate()) / (1000 * 60 * 60 * 24)
@@ -829,7 +853,7 @@ async function loadSellerOrders() {
       deliveryInfo = `<br><small>Delivered in ${days} day(s)</small>`;
     }
 
-    // 🎨 Status color
+    // Status color
     let statusColor = "black";
     if (order.status === "pending") statusColor = "orange";
     else if (order.status === "shipped") statusColor = "blue";
@@ -856,7 +880,7 @@ window.markShipped = async (orderId) => {
   try {
     await updateDoc(doc(db, "orders", orderId), {
       status: "shipped",
-      shippedAt: new Date() // ✅ save timestamp
+      shippedAt: new Date() // save timestamp
     });
 
     alert("Order marked as shipped");
@@ -872,7 +896,7 @@ window.markDelivered = async (orderId) => {
   try {
     await updateDoc(doc(db, "orders", orderId), {
       status: "delivered",
-      deliveredAt: new Date() // ✅ save timestamp
+      deliveredAt: new Date() // save timestamp
     });
 
     alert("Order marked as delivered");
@@ -960,23 +984,6 @@ if (resetBtn) {
     }
   });
 }
-// New function
-
-window.editProduct = async function(id) {
-  editingProductId = id;
-
-  const docSnap = await getDoc(doc(db, "products", id));
-  const product = docSnap.data();
-
-  document.getElementById("pName").value = product.name;
-  document.getElementById("pPrice").value = product.price;
-  document.getElementById("pDesc").value = product.description;
-  document.getElementById("pCategory").value = product.category;
-
-  window.scrollTo({ top: 0, behavior: "smooth" });
-
-  document.querySelector("#productForm button").innerText = "Update Product";
-};
 
 /* ================= CORE MESSAGING ================= */
 

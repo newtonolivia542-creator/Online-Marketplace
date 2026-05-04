@@ -426,13 +426,6 @@ async function loadMyOrders() {
         <strong>Status:</strong> ${order.status}
       </p>
 
-      ${
-        order.status === "pending"
-          ? `<button onclick="cancelOrder('${docSnap.id}', '${order.productId}')" class="btn-danger">
-              Cancel
-            </button>`
-          : ""
-      }
     </div>
 
   </div>
@@ -969,28 +962,6 @@ async function loadSoldProducts() {
     `;
   });
 }
-
-/*=======CANCEL ORDER ========= */
-window.cancelOrder = async (orderId, productId) => {
-  const confirmCancel = confirm("Are you sure you want to cancel this order?");
-  if (!confirmCancel) return;
-
-  try {
-    // delete order
-    await deleteDoc(doc(db, "orders", orderId));
-
-    // mark product as not sold again
-    await updateDoc(doc(db, "products", productId), {
-      sold: false
-    });
-
-    alert("Order cancelled.");
-    loadMyOrders();
-    loadProducts(); // refresh store list
-  } catch (err) {
-    alert("Cancel failed: " + err.message);
-  }
-};
 
 /* ================= LOGOUT ================= */
 const logoutBtn = document.getElementById("logoutBtn");

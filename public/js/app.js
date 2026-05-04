@@ -134,7 +134,7 @@ onAuthStateChanged(auth, async (user) => {
       return;
     }
 
-    // 👋 UI
+    //  UI
     const welcome = document.getElementById("welcome");
     if (welcome) welcome.innerText = `Logged in as: ${user.email} (${role})`;
 
@@ -183,7 +183,7 @@ if (productForm) {
 
     let imageURLs = [];
 
-    // 🔥 Upload new images if selected
+    // Upload new images if selected
     if (files.length > 0) {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -196,7 +196,7 @@ if (productForm) {
       }
     }
 
-    // 🔥 If editing and no new images → keep old ones
+    // If editing and no new images → keep old ones
     if (editingProductId && imageURLs.length === 0) {
       const docSnap = await getDoc(doc(db, "products", editingProductId));
       const data = docSnap.data();
@@ -204,7 +204,7 @@ if (productForm) {
       imageURLs = data.images || (data.imageURL ? [data.imageURL] : []);
     }
 
-    // 🔥 If new product and no image → block
+    // If new product and no image → block
     if (!editingProductId && imageURLs.length === 0) {
       alert("Please upload at least one image");
       return;
@@ -220,7 +220,7 @@ if (productForm) {
       createdAt: new Date()
     };
 
-    // 🔥 UPDATE PRODUCT
+    // UPDATE PRODUCT
     if (editingProductId) {
       await updateDoc(doc(db, "products", editingProductId), productData);
 
@@ -230,7 +230,7 @@ if (productForm) {
       document.querySelector("#productForm button").innerText = "Post to Marketplace";
     }
 
-    // 🔥 ADD NEW PRODUCT
+    // ADD NEW PRODUCT
     else {
       await addDoc(collection(db, "products"), productData);
       alert("Product posted!");
@@ -303,7 +303,7 @@ function displayProducts(products) {
       </button>
     `;
 
-    // 🔥 CLICK IMAGE INSTEAD OF BUTTON
+    //  CLICK IMAGE INSTEAD OF BUTTON //
     card.querySelector("img").addEventListener("click", () => {
       window.location.href = `product-detail.html?id=${product.id}`;
     });
@@ -600,6 +600,8 @@ await addDoc(collection(db, "messages"), {
 
       alert("Message sent!");
       document.getElementById("messageInput").value = "";
+
+      window.location.href = `messages.html?conversationId=${conversationId}`;
 
     } catch (err) {
       alert("Error: " + err.message);
@@ -1021,13 +1023,13 @@ if (resetBtn) {
 
 /* ================= CORE MESSAGING ================= */
 
-// 🔥 Always generate SAME conversation ID
+// Always generate SAME conversation ID
 function getConversationId(user1, user2, productId) {
   const sortedUsers = [user1, user2].sort(); // ONLY sort users
   return `${sortedUsers[0]}_${sortedUsers[1]}_${productId}`;
 }
 
-// 🔥 Send message (USED EVERYWHERE)
+// Send message (USED EVERYWHERE)
 async function sendMessage(productId, otherUserId, inputId, existingConvoId = null) {
   const input = document.getElementById(inputId);
   const text = input.value.trim();
@@ -1040,7 +1042,7 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
     return;
   }
 
-  // 🔥 USE EXISTING conversationId IF AVAILABLE
+  // USE EXISTING conversationId IF AVAILABLE
   const conversationId =
     existingConvoId ||
     getConversationId(user.uid, otherUserId, productId);
@@ -1064,7 +1066,7 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
   }
 }
 
-// 🔥 Handle reply from UI
+// Handle reply from UI
 window.handleReply = async function(convoId, receiverId, productId, textareaId) {
   const input = document.getElementById(textareaId);
   const text = input.value.trim();
@@ -1074,7 +1076,7 @@ window.handleReply = async function(convoId, receiverId, productId, textareaId) 
     return;
   }
 
-  // 🔥 PASS convoId HERE
+  // PASS convoId HERE
   await sendMessage(productId, receiverId, textareaId, convoId);
 
   input.value = "";
@@ -1083,7 +1085,7 @@ window.handleReply = async function(convoId, receiverId, productId, textareaId) 
   loadBuyerMessages?.();
 };
 
-// 🔥 Get other user in conversation
+// Get other user in conversation
 function getOtherUserId(messages) {
   const currentUser = auth.currentUser.uid;
 
@@ -1127,10 +1129,10 @@ async function loadSellerMessages() {
     conversations[convoId].push(msg);
   });
 
-  // ✅ GROUP BY PRODUCT (FIX DUPLICATES WITHOUT BREAKING REPLY)
+  // GROUP BY PRODUCT (FIX DUPLICATES WITHOUT BREAKING REPLY)
   const convoList = Object.values(conversations);
 
-// ✅ NOW RENDER
+// NOW RENDER
 for (const msgs of convoList) {
   const convoId = msgs[0].conversationId;
   const firstMsg = msgs[0];
@@ -1187,7 +1189,7 @@ for (const msgs of convoList) {
           Reply
         </button>
 
-        <!-- ✅ FIXED BUTTON -->
+        <!-- FIXED BUTTON -->
         <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
           style="background:red; color:white; margin-top:10px;">
           Delete Chat
@@ -1209,7 +1211,7 @@ async function loadBuyerMessages() {
 
   const conversations = {};
 
-  // ✅ ONLY ONE LOOP (correct one)
+  // ONLY ONE LOOP (correct one)
   snapshot.forEach(docSnap => {
     const msg = docSnap.data();
 
@@ -1218,7 +1220,7 @@ async function loadBuyerMessages() {
       msg.senderId !== auth.currentUser.uid
     ) return;
 
-    // 🔥 ALWAYS recompute conversationId
+    // ALWAYS recompute conversationId
     const users = [msg.senderId, msg.receiverId].sort().join("_");
     const convoId = `${users}_${msg.productId}`;
     if (!conversations[convoId]) conversations[convoId] = [];
@@ -1226,7 +1228,7 @@ async function loadBuyerMessages() {
     conversations[convoId].push(msg);
   });
 
-  // ✅ render
+  // render
   for (const convoId in conversations) {
     const msgs = conversations[convoId];
 

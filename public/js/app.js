@@ -819,8 +819,18 @@ async function loadSellerOrders() {
     const order = docSnap.data();
 
     // get product info
+    //const productSnap = await getDoc(doc(db, "products", order.productId));
+    //const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
     const productSnap = await getDoc(doc(db, "products", order.productId));
-    const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
+
+    let productName = "Unknown product";
+    let productImage = "";
+
+    if (productSnap.exists()) {
+      const product = productSnap.data();
+      productName = product.name;
+      productImage = product.images?.[0] || product.imageURL || "";
+    }
 
     let shipBtn = "";
     let deliverBtn = "";
@@ -860,18 +870,25 @@ async function loadSellerOrders() {
     else if (order.status === "delivered") statusColor = "green";
 
     // FINAL UI
-    sellerOrders.innerHTML += `
-      <li>
-        <strong>${productName}</strong> |
-        Status: <span style="color:${statusColor}; font-weight:bold;">
-          ${order.status}
-        </span>
-        ${deliveryInfo}
-        <br>
-        ${shipBtn}
-        ${deliverBtn}
-      </li>
-    `;
+sellerOrders.innerHTML += `
+  <li style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+    
+    <img src="${productImage}" 
+         style="width:60px; height:60px; object-fit:cover; border-radius:8px;" />
+
+    <div>
+      <strong>${productName}</strong> |
+      Status: <span style="color:${statusColor}; font-weight:bold;">
+        ${order.status}
+      </span>
+      ${deliveryInfo}
+      <br>
+      ${shipBtn}
+      ${deliverBtn}
+    </div>
+
+  </li>
+`;
   }
 }
 
@@ -926,9 +943,26 @@ async function loadSoldProducts() {
     // Only sold products
     if (product.sold !== true) return;
 
+    const image = product.images?.[0] || product.imageURL || "";
+
     soldList.innerHTML += `
-      <li>
-        ${product.name} — $${product.price}
+      <li style="
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      ">
+        <img src="${image}" style="
+          width: 50px;
+          height: 50px;
+          object-fit: cover;
+          border-radius: 6px;
+        " />
+
+        <div>
+          <strong>${product.name}</strong><br>
+          $${product.price}
+        </div>
       </li>
     `;
   });

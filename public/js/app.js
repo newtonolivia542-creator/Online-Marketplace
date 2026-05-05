@@ -1005,6 +1005,13 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
   const input = document.getElementById(inputId);
   const text = input.value.trim();
 
+  //Function to stop data from entering Firestore again//
+  if (!productId) {
+    console.error("❌ Tried to send message without productId");
+    alert("Something went wrong. Please reload the page.");
+    return;
+  }
+
   if (!text) return;
 
   const user = auth.currentUser;
@@ -1152,7 +1159,8 @@ for (const msgs of convoList) {
         <img src="${productImage}" width="80"><br>
         <strong>${product.name || "Unknown Product"}</strong>
 
-        <div>${chatHTML}</div>
+        <div class="chat-box">
+          ${chatHTML}</div>
 
         <textarea id="seller-${convoId}" placeholder="Reply..."></textarea><br>
 
@@ -1266,7 +1274,8 @@ async function loadBuyerMessages() {
         <img src="${productImage}" width="80"><br>
         <strong>${product.name || "Unknown Product"}</strong>
 
-        <div>${chatHTML}</div>
+        <div class="chat-box">
+          ${chatHTML}</div>
 
         <textarea id="buyer-${convoId}" placeholder="Reply..."></textarea><br>
 

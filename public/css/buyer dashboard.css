@@ -386,3 +386,23 @@ button[onclick]:hover {
   text-align: center;
   margin-top: 20px;
 }
+.chat-box {
+  max-height: 220px;   /* height of each product chat */
+  overflow-y: auto;    /* scroll per product */
+  padding: 10px;
+  border: 1px solid #ddd;
+  background: #f9f9f9;
+  margin-top: 10px;
+  border-radius: 8px;
+}
+.main-wrapper {
+  max-width: 900px;     /* controls how wide it is */
+  margin: 20px auto;    /* centers it */
+  padding: 10px;
+}
+
+.chat-container {
+  background: white;
+  border-radius: 10px;
+  padding: 15px;
+}

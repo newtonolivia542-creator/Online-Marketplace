@@ -164,10 +164,23 @@ async function loadProducts() {
       }
     }
 
+    const productImage = product.images?.[0] || product.imageURL || "";
+
     const row = document.createElement("tr");
 
     row.innerHTML = `
       <td>${count}</td>
+  <td>
+  <img src="${productImage}"
+    style="
+      width:60px;
+      height:60px;
+      object-fit:cover;
+      border-radius:6px;
+      background:#eee;
+    "
+  >
+</td>
       <td>${product.name || "No name"}</td>
       <td>$${product.price || 0}</td>
       <td>${sellerEmail}</td>
@@ -188,7 +201,6 @@ window.deleteProduct = async function(productId) {
 };
 
 // ================= ORDERS =================
-// ================= ORDERS =================
 async function loadOrders() {
   const snapshot = await getDocs(collection(db, "orders"));
   const orderList = document.getElementById("allOrders");
@@ -196,7 +208,7 @@ async function loadOrders() {
   if (!orderList) return;
   orderList.innerHTML = "";
 
-  // 🔥 universal date formatter
+  // universal date formatter
   const formatDate = (field) => {
     if (!field) return "N/A";
     try {
@@ -293,6 +305,7 @@ async function loadOrders() {
         }
       }
 
+
       const isLate = deliveryTime.includes("Over");
 
       // ================= RENDER =================
@@ -307,7 +320,7 @@ async function loadOrders() {
           <td>${delivered}</td>
           <td style="
             color:white;
-            background-color:${isLate ? 'red' : 'green'};
+            background-color:${isLate ? 'red' : 'grey'};
             padding:4px 8px;
             border-radius:6px;
             text-align:center;

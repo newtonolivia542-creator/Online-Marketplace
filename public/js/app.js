@@ -653,33 +653,51 @@ await addDoc(collection(db, "messages"), {
     document.getElementById("detailImage").src = productImages[currentImageIndex];
   });
 
-  //  ADD TO CART (MOVE IT HERE)
-  const addToCartBtn = document.getElementById("addToCartBtn");
+  // ADD TO CART
+const addToCartBtn = document.getElementById("addToCartBtn");
 
-  if (addToCartBtn) {
-    addToCartBtn.addEventListener("click", async () => {
-      const quantity = Number(document.getElementById("detailQuantity").value);
+if (addToCartBtn) {
+  addToCartBtn.addEventListener("click", async () => {
 
-      if (quantity < 1) return alert("Quantity must be at least 1");
+    const user = auth.currentUser;
 
-      try {
-        // create unique conversation ID per product + users
-        const buyerId = auth.currentUser.uid;
-        const sellerId = product.sellerId;
+    if (!user) {
+      alert("Please login first");
+      return;
+    }
 
-        const users = [buyerId, sellerId].sort();
-        const conversationId = `${users[0]}_${users[1]}_${productId}`;
+    const quantity =
+      Number(document.getElementById("detailQuantity").value);
 
-        alert("Product added to cart!");
-        window.location.href = "cart.html";
+    if (quantity < 1) {
+      alert("Quantity must be at least 1");
+      return;
+    }
 
-      } catch (err) {
-        alert("Failed to add to cart: " + err.message);
-      }
-    });
-  }
+    try {
 
-  loadProduct();
+      await addDoc(collection(db, "carts"), {
+        userId: user.uid,
+        productId: productId,
+        quantity: quantity,
+        createdAt: serverTimestamp()
+      });
+
+      alert("Product added to cart!");
+
+      window.location.href = "cart.html";
+
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add to cart: " + err.message);
+    }
+
+  });
+}
+
+// LOAD PRODUCT
+loadProduct();
+
 }
 
   // ===== PRODUCT DETAIL LOGIC END =====

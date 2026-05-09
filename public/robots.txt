@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://online-marketplace-e99cd.web.app/sitemap.xml

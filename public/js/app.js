@@ -150,10 +150,19 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     if (role === "seller") {
+      // First-time seller setup
+      if (!userDoc.data().storeName &&
+          !window.location.pathname.includes("seller-profile.html")) {
+
+        window.location.href = "seller-profile.html";
+        return;
+      }
+
       loadSellerProducts();
       loadSellerOrders();
       loadSoldProducts();
       loadSellerMessages();
+      loadStoreProfile();
     }
 
   } else {
@@ -1514,3 +1523,91 @@ window.deleteChat = async function(conversationId, productId) {
   loadSellerMessages?.();
   loadBuyerMessages?.();
 };
+
+// STORE INFORMATION FUNCTION //
+
+const saveStoreBtn = document.getElementById("saveStoreBtn");
+
+if (saveStoreBtn) {
+
+  saveStoreBtn.addEventListener("click", async () => {
+
+    const storeName =
+      document.getElementById("storeName").value.trim();
+
+    const storeDescription =
+      document.getElementById("storeDescription").value.trim();
+
+    if (!storeName) {
+      alert("Please enter a store name");
+      return;
+    }
+
+    try {
+
+      await updateDoc(
+        doc(db, "users", auth.currentUser.uid),
+        {
+          storeName: storeName,
+          storeDescription: storeDescription
+        }
+      );
+
+      alert("Store profile saved!");
+
+      window.location.href = "seller dashboard.html";
+
+    } catch (err) {
+
+      alert(err.message);
+
+    }
+
+  });
+
+}
+
+async function loadStoreProfile() {
+
+  if (!auth.currentUser) return;
+
+  const userDoc = await getDoc(
+    doc(db, "users", auth.currentUser.uid)
+  );
+
+  if (!userDoc.exists()) return;
+
+  const data = userDoc.data();
+
+  const storeInput =
+    document.getElementById("storeName");
+
+  if (storeInput) {
+    storeInput.value = data.storeName || "";
+  }
+
+  const descriptionInput =
+    document.getElementById("storeDescription");
+
+  if (descriptionInput) {
+    descriptionInput.value =
+      data.storeDescription || "";
+  }
+
+  const storeNameElement =
+    document.getElementById("currentStoreName");
+
+  if (storeNameElement) {
+    storeNameElement.innerText =
+      `🏪 ${data.storeName || "No Store Name Yet"}`;
+  }
+
+  const descriptionElement =
+    document.getElementById("currentStoreDescription");
+
+  if (descriptionElement) {
+    descriptionElement.innerText =
+      data.storeDescription || "";
+  }
+
+}

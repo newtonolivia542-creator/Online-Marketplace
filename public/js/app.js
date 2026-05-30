@@ -1465,7 +1465,7 @@ async function loadBuyerMessages() {
 
         <div class="chat-box">
           ${chatHTML}</div>
-
+ 
         <textarea id="buyer-${convoId}" placeholder="Reply..."></textarea><br>
 
         <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}')">

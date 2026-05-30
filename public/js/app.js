@@ -146,7 +146,7 @@ onAuthStateChanged(auth, async (user) => {
       loadProducts();
       loadMyOrders();
       loadCart();
-      //loadBuyerMessages();
+      loadBuyerMessages();
     }
 
     if (role === "seller") {
@@ -239,6 +239,32 @@ if (productForm) {
     productForm.reset();
   });
 }
+
+/* ==========FUNCTION FOR SCRIPE ==================*/
+
+/*const stripe = Stripe("pk_test_51TZMZKJP6GbymKnndtGlf6eMNL3TgXgtA5nlZB6i3noPpqmC7dwXnWHbSDMQCuNbhlgSDy6sdzUHCmqKDZGE60sf008lPcapEf");
+
+const elements = stripe.elements();
+
+const card = elements.create("card");*/
+
+let stripe = null;
+let elements = null;
+let card = null;
+
+if (typeof Stripe !== "undefined") {
+  stripe = Stripe("pk_test_51TZMZKJP6GbymKnndtGlf6eMNL3TgXgtA5nlZB6i3noPpqmC7dwXnWHbSDMQCuNbhlgSDy6sdzUHCmqKDZGE60sf008lPcapEf");
+
+  elements = stripe.elements();
+  card = elements.create("card");
+}
+//OFC//
+let selectedProduct = null;
+
+const functionURL =
+  "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/createPaymentIntent";
+
+
 /* =================LOAD CATEGORIES ON BUYER DASHBOARD =========*/
 
 const categoryFilter = document.getElementById("categoryFilter");
@@ -254,6 +280,14 @@ if (categoryFilter) {
       displayProducts(filtered);
     }
   });
+}
+
+/* ================= STRIPE CARD MOUNT ================= */
+
+const cardElementContainer = document.getElementById("card-element");
+
+if(cardElementContainer){
+  card.mount("#card-element");
 }
 
 
@@ -328,7 +362,7 @@ if (searchBtn) {
   });
 }
 
-/* ================= BUY PRODUCT ================= */
+/* ================= BUY PRODUCT ================= 
 function setupBuyButtons() {
   const buyButtons = document.querySelectorAll(".buyBtn");
 
@@ -358,7 +392,30 @@ function setupBuyButtons() {
     });
   });
 }
+*/
 
+/* ================= BUY PRODUCT ================= */
+
+function setupBuyButtons() {
+
+  const buyButtons = document.querySelectorAll(".buyBtn");
+
+  buyButtons.forEach(btn => {
+
+    btn.addEventListener("click", async () => {
+
+      selectedProduct = {
+        id: btn.dataset.id,
+        sellerId: btn.dataset.seller
+      };
+
+      document.getElementById("checkoutModal").style.display = "block";
+
+    });
+
+  });
+
+}
 /* =============setupAddCartButtons ==========*/
 
 function setupAddCartButtons() {
@@ -384,6 +441,106 @@ function setupAddCartButtons() {
     });
   });
 }
+
+/* ================= STRIPE PAYMENT ================= */
+
+const payBtn = document.getElementById("payBtn");
+
+if(payBtn){
+
+  payBtn.addEventListener("click", async () => {
+
+    try {
+
+      payBtn.disabled = true;
+      payBtn.textContent = "Processing...";
+
+      const response = await fetch(functionURL, {
+        method: "POST"
+      });
+
+      const data = await response.json();
+
+      const result = await stripe.confirmCardPayment(
+        data.clientSecret,
+        {
+          payment_method: {
+            card: card
+          }
+        }
+      );
+
+      if(result.error){
+
+        document.getElementById("payment-message").textContent =
+          result.error.message;
+
+        payBtn.disabled = false;
+        payBtn.textContent = "Pay Now";
+
+      } else {
+
+        if(result.paymentIntent.status === "succeeded"){
+
+          await addDoc(collection(db, "orders"), {
+
+            productId: selectedProduct.id,
+            sellerId: selectedProduct.sellerId,
+            userId: auth.currentUser.uid,
+            status: "paid",
+            createdAt: new Date()
+
+          });
+
+          await updateDoc(
+            doc(db, "products", selectedProduct.id),
+            {
+              sold: true
+            }
+          );
+
+          document.getElementById("payment-message").textContent =
+            "Payment Successful!";
+
+          document.getElementById("checkoutModal").style.display = "none";
+
+          loadProducts();
+
+          if(typeof loadMyOrders === "function"){
+            loadMyOrders();
+          }
+
+        }
+
+      }
+
+    } catch(error){
+
+      console.log(error);
+
+      document.getElementById("payment-message").textContent =
+        error.message;
+
+    }
+
+  });
+
+}
+
+/* ================= CLOSE CHECKOUT MODAL ================= */
+
+const closeCheckout = document.getElementById("closeCheckout");
+
+if(closeCheckout){
+
+  closeCheckout.addEventListener("click", () => {
+
+    document.getElementById("checkoutModal").style.display = "none";
+
+  });
+
+}
+
 
 /* ================= CUSTOMER ORDERS ================= */
 async function loadMyOrders() {
@@ -610,15 +767,26 @@ await addDoc(collection(db, "messages"), {
 
   async function loadProduct() {
     const docSnap = await getDoc(doc(db, "products", productId));
+    //new function//
+    console.log("Product ID:", productId);
+    console.log("Product Exists:", docSnap.exists());
+    //newfunction ends above//
     if (!docSnap.exists()) return alert("Product not found");
 
     const product = docSnap.data();
 
-    productImages = product.images && product.images.length > 0
+    /*productImages = product.images && product.images.length > 0
       ? product.images
-      : [product.imageURL];
+      : [product.imageURL];*/
+      productImages =
+      product.images?.length
+        ? product.images
+        : (product.imageURL ? [product.imageURL] : []);
+      if(productImages.length > 0){
+        document.getElementById("detailImage").src = productImages[0];
+      }
 
-    document.getElementById("detailImage").src = productImages[0];
+    //document.getElementById("detailImage").src = productImages[0];
 
     if (productImages.length <= 1) {
       document.getElementById("prevBtn").style.display = "none";
@@ -733,7 +901,8 @@ if (window.location.pathname.includes("cart.html")) {
     const confirmRemove = confirm("Remove this item from cart?");
     if (!confirmRemove) return;
 
-    await deleteDoc(doc(db, "orders", orderId));
+    //await deleteDoc(doc(db, "orders", orderId));
+    await deleteDoc(doc(db, "carts", orderId));
     loadCart();
   };
 

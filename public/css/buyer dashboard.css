@@ -415,3 +415,11 @@ button[onclick]:hover {
   max-width: 900px;
   margin: 20px auto;
 }
+
+#card-element{
+  border: 1px solid #ccc;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  background: white;
+}

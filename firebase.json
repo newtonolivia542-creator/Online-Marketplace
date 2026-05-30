@@ -5,8 +5,8 @@
     }
   },
   "scripts": {
-  "build": "your-build-command"
-},
+    "build": "your-build-command"
+  },
   "dataconnect": {
     "source": "dataconnect"
   },
@@ -22,7 +22,20 @@
         "source": "**",
         "destination": "/index.html"
       }
-
     ]
-  }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
 }

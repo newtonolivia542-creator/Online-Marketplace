@@ -7,6 +7,7 @@
   <title>Buy Cheap Electronics | Solix</title>
 
   <meta name="description" content="Buy Cheap Electronics securely on Solix marketplace.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
   <header>
@@ -63,8 +64,31 @@
         <button id="addToCartBtn">Add to Cart</button>
       </div>
     </div>
+<!--PAYMENT FUNCTION-->
+    <div id="checkoutModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6);">
+
+      <div style="background:white; width:400px; margin:100px auto; padding:20px; border-radius:10px;">
+    
+        <h2>Complete Payment</h2>
+    
+        <div id="card-element"></div>
+    
+        <button id="payBtn">
+          Pay Now
+        </button>
+    
+        <p id="payment-message"></p>
+    
+        <button id="closeCheckout">
+          Cancel
+        </button>
+    
+      </div>
+    
+    </div>
   
 <script type="module" src="../js/app.js"></script>
 <link rel="stylesheet" href="../css/buyer dashboard.css" />
+<script src="https://js.stripe.com/v3/"></script>
 </body>
 </html>

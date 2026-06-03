@@ -1630,124 +1630,7 @@ async function loadBuyerMessages() {
       `;
     });
 
-
-//LOAD REVIEW FUNCTION//
-
-async function loadReviews(productId) {
-
-  const reviewsContainer =
-    document.getElementById("reviewsContainer");
-
-  if (!reviewsContainer) return;
-
-  const q = query(
-    collection(db, "reviews"),
-    where("productId", "==", productId)
-  );
-
-  const snapshot = await getDocs(q);
-
-  reviewsContainer.innerHTML = "";
-
-  if (snapshot.empty) {
-
-    reviewsContainer.innerHTML =
-      "<p>No reviews yet.</p>";
-
-    return;
-  }
-
-  snapshot.forEach((docSnap) => {
-
-    const review = docSnap.data();
-
-    const stars =
-      "★".repeat(review.rating) +
-      "☆".repeat(5 - review.rating);
-
-    reviewsContainer.innerHTML += `
-      <div class="review-card">
-
-        <h4>${stars}</h4>
-
-        <p>${review.comment}</p>
-
-        <small>
-          By ${review.buyerName || "Anonymous"}
-        </small>
-
-      </div>
-      <hr>
-    `;
-  });
-}
-//SUBMIT REVIEW BUTTON AND SAFE THE REVIEW//
-const submitReviewBtn =
-  document.getElementById("submitReviewBtn");
-
-if (submitReviewBtn) {
-
-  submitReviewBtn.addEventListener("click", async () => {
-
-    const productId =
-      new URLSearchParams(window.location.search)
-      .get("productId");
-
-    const rating =
-      Number(
-        document.getElementById("reviewRating").value
-      );
-
-    const comment =
-      document.getElementById("reviewComment")
-      .value.trim();
-
-    if (!comment) {
-      alert("Please write a review");
-      return;
-    }
-
-    await addDoc(
-      collection(db, "reviews"),
-      {
-        productId,
-
-        buyerId: auth.currentUser.uid,
-
-        rating,
-
-        comment,
-
-        createdAt: serverTimestamp()
-      }
-    );
-
-    alert("Review submitted!");
-
-    window.location.href = "order.html";
-
-  });
-
-}
-
-//Submit function//
-window.toggleReview = function(productId) {
-
-  const reviewDiv =
-    document.getElementById(`review-${productId}`);
-
-  if (!reviewDiv) return;
-
-  if (reviewDiv.style.display === "none") {
-
-    reviewDiv.style.display = "block";
-
-  } else {
-
-    reviewDiv.style.display = "none";
-
-  }
-};    const productImage = product.images?.[0] || product.imageURL || "";
+    const productImage = product.images?.[0] || product.imageURL || "";
 
     msgList.innerHTML += `
       <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
@@ -1937,9 +1820,9 @@ async function loadReviews(productId) {
       "★".repeat(review.rating) +
       "☆".repeat(5 - review.rating);
 
-      reviewsContainer.innerHTML += `
+    reviewsContainer.innerHTML += `
       <div class="review-card">
-      
+
         <h4>${stars}</h4>
 
         <p>${review.comment}</p>

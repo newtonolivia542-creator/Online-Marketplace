@@ -1,0 +1,28 @@
+.site-footer {
+  margin-top: 50px;
+  padding: 20px;
+  text-align: center;
+  background-color: #1f2937;
+  color: white;
+}
+
+.footer-links {
+  margin-bottom: 10px;
+}
+
+.footer-links a {
+  color: white;
+  text-decoration: none;
+  margin: 0 15px;
+  font-size: 14px;
+}
+
+.footer-links a:hover {
+  text-decoration: underline;
+}
+
+.site-footer p {
+  margin: 0;
+  font-size: 13px;
+  color: #d1d5db;
+}

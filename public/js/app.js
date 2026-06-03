@@ -187,6 +187,19 @@ if (productForm) {
   productForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    try {
+
+      console.log("Submitting product...");
+  
+      // all your existing upload code here
+  
+    } catch (err) {
+  
+      console.error(err);
+      alert(err.message);
+  
+    }
+
     const fileInput = document.getElementById("pImage");
     const files = fileInput.files;
 
@@ -222,6 +235,7 @@ if (productForm) {
     const productData = {
       name: document.getElementById("pName").value,
       price: Number(document.getElementById("pPrice").value),
+      quantity: Number(document.getElementById("quantity").value),
       description: document.getElementById("pDesc").value,
       images: imageURLs,
       sellerId: auth.currentUser.uid,
@@ -312,10 +326,17 @@ async function loadProducts() {
 
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
-
-    if (product.sold === true) return;
-
-    allProducts.push({ id: docSnap.id, ...product });
+  
+    // Hide products that are out of stock
+    if (
+      product.quantity !== undefined &&
+      product.quantity <= 0
+    ) return;
+  
+    allProducts.push({
+      id: docSnap.id,
+      ...product
+    });
   });
 
   displayProducts(allProducts);
@@ -579,6 +600,24 @@ async function loadMyOrders() {
   const product = productSnap.exists() ? productSnap.data() : {};
   const image = product.images?.[0] || product.imageURL || "";
 
+  //NEW FUNCTION FOR REVIEW//
+  const reviewQuery = query(
+    collection(db, "reviews"),
+    where("productId", "==", order.productId),
+    where("buyerId", "==", auth.currentUser.uid)
+  );
+  
+  const reviewSnapshot = await getDocs(reviewQuery);
+
+  const alreadyReviewed = !reviewSnapshot.empty;
+
+  let reviewData = null;
+
+  if (!reviewSnapshot.empty) {
+    reviewData = reviewSnapshot.docs[0].data();
+  }
+  //ENDS HERE//
+
   orderList.innerHTML += `
   <div class="order-details">
       <h3>${productName}</h3>
@@ -591,6 +630,40 @@ async function loadMyOrders() {
       <p class="order-status status-${order.status}">
         <strong>Status:</strong> ${order.status}
       </p>
+
+      ${
+        order.status === "delivered"
+        ? (
+            alreadyReviewed
+            ? `
+              <p style="color:green;">
+                <strong>✓ Reviewed</strong>
+              </p>
+      
+              <button onclick="toggleReview('${order.productId}')">
+                View My Review
+              </button>
+      
+              <div
+                id="review-${order.productId}"
+                style="display:none; margin-top:10px;"
+              >
+                <p>
+                  ${"★".repeat(reviewData.rating)}
+                  ${"☆".repeat(5 - reviewData.rating)}
+                </p>
+      
+                <p>${reviewData.comment}</p>
+              </div>
+            `
+            : `
+              <button onclick="window.location.href='reviews.html?productId=${order.productId}'">
+                Leave Review
+              </button>
+            `
+          )
+        : ""
+      }
 
     </div>
 
@@ -616,7 +689,13 @@ function loadSellerProducts() {
     snapshot.forEach(docSnap => {
       const product = docSnap.data();
 
-      if (product.sold === true) return;
+     // if ((product.quantity || 0) <= 0) return;
+    const quantity =
+      product.quantity !== undefined
+        ? product.quantity
+        : 1;
+
+    if (quantity <= 0) return;
 
       const productDiv = document.createElement("div");
 
@@ -874,6 +953,7 @@ if (addToCartBtn) {
 
 // LOAD PRODUCT
 loadProduct();
+loadReviews(productId);
 
 }
 
@@ -958,7 +1038,7 @@ window.removeFromCart = async (cartItems) => {
 
 /* ===========CHECKOUT BUTTON ============= */
 
-const checkoutBtn = document.getElementById("checkoutBtn");
+/*const checkoutBtn = document.getElementById("checkoutBtn");
 if (checkoutBtn) {
   checkoutBtn.addEventListener("click", async () => {
     const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
@@ -993,7 +1073,100 @@ if (checkoutBtn) {
     loadMyOrders(); // refresh orders page
   });
 }
+*/
+const checkoutBtn = document.getElementById("checkoutBtn");
 
+if (checkoutBtn) {
+
+  checkoutBtn.addEventListener("click", async () => {
+
+    const q = query(
+      collection(db, "carts"),
+      where("userId", "==", auth.currentUser.uid)
+    );
+
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      alert("Your cart is empty!");
+      return;
+    }
+
+    for (const docSnap of snapshot.docs) {
+
+      const cartItem = docSnap.data();
+
+      // Get product info
+      const productSnap = await getDoc(
+        doc(db, "products", cartItem.productId)
+      );
+
+      if (!productSnap.exists()) continue;
+
+      const product = productSnap.data();
+
+      // Create order
+      await addDoc(collection(db, "orders"), {
+
+        productId: cartItem.productId,
+
+        sellerId: product.sellerId,
+
+        userId: auth.currentUser.uid,
+
+        quantity: cartItem.quantity,
+
+        price: product.price,
+
+        status: "pending",
+
+        createdAt: serverTimestamp()
+
+      });
+
+      // Mark product sold
+      /*await updateDoc(
+        doc(db, "products", cartItem.productId),
+        {
+          sold: true
+        }
+      );*/
+    // Update inventory quantity
+
+    const currentQuantity =
+      product.quantity ?? 1;
+
+    const newQuantity =
+      currentQuantity - cartItem.quantity;
+
+    await updateDoc(
+      doc(db, "products", cartItem.productId),
+    {
+        quantity: Math.max(0, newQuantity)
+    }
+  );
+
+      // Remove from cart
+      await deleteDoc(
+        doc(db, "carts", docSnap.id)
+      );
+    }
+
+    alert("Checkout successful!");
+
+    loadCart();
+
+    if (typeof loadProducts === "function") {
+      loadProducts();
+    }
+
+    if (typeof loadMyOrders === "function") {
+      loadMyOrders();
+    }
+
+  });
+
+}
 
 
 /* ================= SELLER ORDERS ================= */
@@ -1132,7 +1305,8 @@ async function loadSoldProducts() {
     const product = docSnap.data();
 
     // Only sold products
-    if (product.sold !== true) return;
+    //if (product.sold !== true) return;
+    if ((product.quantity || 0) > 0) return;
 
     const image = product.images?.[0] || product.imageURL || "";
 
@@ -1456,7 +1630,124 @@ async function loadBuyerMessages() {
       `;
     });
 
-    const productImage = product.images?.[0] || product.imageURL || "";
+
+//LOAD REVIEW FUNCTION//
+
+async function loadReviews(productId) {
+
+  const reviewsContainer =
+    document.getElementById("reviewsContainer");
+
+  if (!reviewsContainer) return;
+
+  const q = query(
+    collection(db, "reviews"),
+    where("productId", "==", productId)
+  );
+
+  const snapshot = await getDocs(q);
+
+  reviewsContainer.innerHTML = "";
+
+  if (snapshot.empty) {
+
+    reviewsContainer.innerHTML =
+      "<p>No reviews yet.</p>";
+
+    return;
+  }
+
+  snapshot.forEach((docSnap) => {
+
+    const review = docSnap.data();
+
+    const stars =
+      "★".repeat(review.rating) +
+      "☆".repeat(5 - review.rating);
+
+    reviewsContainer.innerHTML += `
+      <div class="review-card">
+
+        <h4>${stars}</h4>
+
+        <p>${review.comment}</p>
+
+        <small>
+          By ${review.buyerName || "Anonymous"}
+        </small>
+
+      </div>
+      <hr>
+    `;
+  });
+}
+//SUBMIT REVIEW BUTTON AND SAFE THE REVIEW//
+const submitReviewBtn =
+  document.getElementById("submitReviewBtn");
+
+if (submitReviewBtn) {
+
+  submitReviewBtn.addEventListener("click", async () => {
+
+    const productId =
+      new URLSearchParams(window.location.search)
+      .get("productId");
+
+    const rating =
+      Number(
+        document.getElementById("reviewRating").value
+      );
+
+    const comment =
+      document.getElementById("reviewComment")
+      .value.trim();
+
+    if (!comment) {
+      alert("Please write a review");
+      return;
+    }
+
+    await addDoc(
+      collection(db, "reviews"),
+      {
+        productId,
+
+        buyerId: auth.currentUser.uid,
+
+        rating,
+
+        comment,
+
+        createdAt: serverTimestamp()
+      }
+    );
+
+    alert("Review submitted!");
+
+    window.location.href = "order.html";
+
+  });
+
+}
+
+//Submit function//
+window.toggleReview = function(productId) {
+
+  const reviewDiv =
+    document.getElementById(`review-${productId}`);
+
+  if (!reviewDiv) return;
+
+  if (reviewDiv.style.display === "none") {
+
+    reviewDiv.style.display = "block";
+
+  } else {
+
+    reviewDiv.style.display = "none";
+
+  }
+};    const productImage = product.images?.[0] || product.imageURL || "";
 
     msgList.innerHTML += `
       <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
@@ -1611,3 +1902,121 @@ async function loadStoreProfile() {
   }
 
 }
+
+//LOAD REVIEW FUNCTION//
+
+async function loadReviews(productId) {
+
+  const reviewsContainer =
+    document.getElementById("reviewsContainer");
+
+  if (!reviewsContainer) return;
+
+  const q = query(
+    collection(db, "reviews"),
+    where("productId", "==", productId)
+  );
+
+  const snapshot = await getDocs(q);
+
+  reviewsContainer.innerHTML = "";
+
+  if (snapshot.empty) {
+
+    reviewsContainer.innerHTML =
+      "<p>No reviews yet.</p>";
+
+    return;
+  }
+
+  snapshot.forEach((docSnap) => {
+
+    const review = docSnap.data();
+
+    const stars =
+      "★".repeat(review.rating) +
+      "☆".repeat(5 - review.rating);
+
+      reviewsContainer.innerHTML += `
+      <div class="review-card">
+      
+        <h4>${stars}</h4>
+
+        <p>${review.comment}</p>
+
+        <small>
+          By ${review.buyerName || "Anonymous"}
+        </small>
+
+      </div>
+      <hr>
+    `;
+  });
+}
+//SUBMIT REVIEW BUTTON AND SAFE THE REVIEW//
+const submitReviewBtn =
+  document.getElementById("submitReviewBtn");
+
+if (submitReviewBtn) {
+
+  submitReviewBtn.addEventListener("click", async () => {
+
+    const productId =
+      new URLSearchParams(window.location.search)
+      .get("productId");
+
+    const rating =
+      Number(
+        document.getElementById("reviewRating").value
+      );
+
+    const comment =
+      document.getElementById("reviewComment")
+      .value.trim();
+
+    if (!comment) {
+      alert("Please write a review");
+      return;
+    }
+
+    await addDoc(
+      collection(db, "reviews"),
+      {
+        productId,
+
+        buyerId: auth.currentUser.uid,
+
+        rating,
+
+        comment,
+
+        createdAt: serverTimestamp()
+      }
+    );
+
+    alert("Review submitted!");
+
+    window.location.href = "order.html";
+
+  });
+
+}
+
+//Submit function//
+window.toggleReview = function(productId) {
+
+  const reviewDiv =
+    document.getElementById(`review-${productId}`);
+
+  if (!reviewDiv) return;
+
+  if (reviewDiv.style.display === "none") {
+
+    reviewDiv.style.display = "block";
+
+  } else {
+
+    reviewDiv.style.display = "none";
+
+  }
+};

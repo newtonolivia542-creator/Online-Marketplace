@@ -43,6 +43,8 @@ const registerForm = document.getElementById("registerForm");
 if (registerForm) {
   registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const fullName =
+      document.getElementById("fullName").value;
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
     const role = document.getElementById("role").value;
@@ -50,6 +52,7 @@ if (registerForm) {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       await setDoc(doc(db, "users", userCred.user.uid), {
+        fullName,
         email,
         role,
         createdAt: new Date(), // account creation date
@@ -117,6 +120,26 @@ onAuthStateChanged(auth, async (user) => {
     if (!userDoc.exists()) return;
 
     const role = userDoc.data().role;
+//looking for user without a fullname//
+    const userData = userDoc.data();
+
+    if (!userData.fullName) {
+
+      const fullName =
+        prompt("Please enter your full name");
+
+      if (fullName) {
+
+        await updateDoc(
+          doc(db, "users", user.uid),
+          {
+            fullName: fullName
+          }
+        );
+
+      }
+
+    }
 
     // PAGE PROTECTION
     if (currentPage.includes("seller dashboard.html") && role !== "seller") {
@@ -882,8 +905,47 @@ await addDoc(collection(db, "messages"), {
     }
 
     document.getElementById("detailName").innerText = product.name;
+    loadAverageRating(productId);
     document.getElementById("detailDesc").innerText = product.description;
     document.getElementById("detailPrice").innerText = product.price;
+
+    //NEW FUNCTION FOR SHOWING AVAIABLE STOLK//
+const stockElement =
+  document.getElementById("detailQuantityAvailable");
+
+if (stockElement) {
+
+  if (product.quantity <= 0) {
+
+    stockElement.innerHTML =
+      " ❌ Out of Stock";
+
+    stockElement.style.color = "red";
+
+    const addToCartBtn =
+      document.getElementById("addToCartBtn");
+
+    if (addToCartBtn) {
+      addToCartBtn.disabled = true;
+      addToCartBtn.innerText = "Out of Stock";
+    }
+
+  } else if (product.quantity <= 3) {
+
+    stockElement.innerHTML =
+      ` ⚠️ Only ${product.quantity} left!`;
+
+    stockElement.style.color = "orange";
+    stockElement.style.fontWeight = "bold";
+
+  } else {
+
+    stockElement.innerHTML =
+      ` ✅ ${product.quantity} available`;
+
+    stockElement.style.color = "green";
+  }
+}
   }
 
   // IMAGE BUTTONS
@@ -1862,12 +1924,25 @@ if (submitReviewBtn) {
       return;
     }
 
+    const userDoc =
+      await getDoc(
+        doc(db, "users", auth.currentUser.uid)
+      );
+
+    const userData =
+      userDoc.data();
+
     await addDoc(
       collection(db, "reviews"),
       {
         productId,
 
         buyerId: auth.currentUser.uid,
+
+        buyerName:
+          userData.fullName ||
+          auth.currentUser.displayName ||
+          auth.currentUser.email,
 
         rating,
 
@@ -1903,3 +1978,43 @@ window.toggleReview = function(productId) {
 
   }
 };
+
+//Getting the Average of Product Rating//
+async function loadAverageRating(productId) {
+
+  const reviewsQuery = query(
+    collection(db, "reviews"),
+    where("productId", "==", productId)
+  );
+
+  const snapshot = await getDocs(reviewsQuery);
+
+  const ratingElement =
+    document.getElementById("averageRating");
+
+  if (!ratingElement) return;
+
+  if (snapshot.empty) {
+
+    ratingElement.innerHTML =
+      "☆☆☆☆☆ No Reviews Yet";
+
+    return;
+  }
+
+  let totalRating = 0;
+
+  snapshot.forEach((docSnap) => {
+    totalRating += docSnap.data().rating;
+  });
+
+  const average =
+    (totalRating / snapshot.size).toFixed(1);
+
+  const stars =
+    "★".repeat(Math.round(average)) +
+    "☆".repeat(5 - Math.round(average));
+
+  ratingElement.innerHTML =
+    `${stars} ${average} (${snapshot.size} Reviews)`;
+}

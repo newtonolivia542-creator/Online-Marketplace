@@ -966,7 +966,7 @@ await addDoc(collection(db, "messages"), {
       alert("Error: " + err.message);
     }
   });
-}
+}*/
 
   const urlParams = new URLSearchParams(window.location.search);
   const productId = urlParams.get("id");
@@ -1650,7 +1650,7 @@ async function loadSellerMessages() {
     ) return;
 
     const convoId = msg.conversationId;
-    
+
     if (!conversations[convoId]) conversations[convoId] = [];
 
     conversations[convoId].push(msg);
@@ -1679,7 +1679,7 @@ for (const msgs of convoList) {
 
     msgs.forEach(msg => {
       if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
-      const isMe = msg.senderId === auth.currentUser.uid;
+        const isMe = msg.senderId === auth.currentUser.uid;
 
         const displayName =
           isMe

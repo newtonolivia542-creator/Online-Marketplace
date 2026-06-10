@@ -828,6 +828,104 @@ window.deleteProduct = async (productId) => {
 //Detail page//
 
 if (window.location.pathname.includes("product-detail.html")) {
+
+  const sendMessageBtn =
+    document.getElementById("sendMessageBtn");
+
+  if (sendMessageBtn) {
+
+    sendMessageBtn.addEventListener("click", async () => {
+
+      const text =
+        document.getElementById("messageInput").value.trim();
+
+      if (!text) {
+        alert("Message cannot be empty");
+        return;
+      }
+
+      const productSnap =
+        await getDoc(doc(db, "products", productId));
+
+      const product =
+        productSnap.data();
+
+      try {
+
+        const buyerId =
+          auth.currentUser.uid;
+
+        const sellerId =
+          product.sellerId;
+
+        const conversationId =
+          getConversationId(
+            buyerId,
+            sellerId,
+            productId
+          );
+
+        /*await addDoc(
+          collection(db, "messages"),
+          {
+            senderId: buyerId,
+            receiverId: sellerId,
+            productId,
+            conversationId,
+            text,
+            createdAt: serverTimestamp(),
+            deletedBy: []
+          }
+        );*/
+const userDoc =
+  await getDoc(
+    doc(db, "users", buyerId)
+  );
+
+const userData =
+  userDoc.data();
+
+await addDoc(
+  collection(db, "messages"),
+  {
+    senderId: buyerId,
+
+    senderName:
+      userData.fullName ||
+      auth.currentUser.email,
+
+    receiverId: sellerId,
+
+    productId,
+
+    conversationId,
+
+    text,
+
+    createdAt: serverTimestamp(),
+
+    deletedBy: []
+  }
+);
+
+        alert("Message sent!");
+
+        document.getElementById("messageInput").value = "";
+
+        window.location.href =
+          `messages.html?conversationId=${conversationId}`;
+
+      } catch (err) {
+
+        alert("Error: " + err.message);
+
+      }
+
+    });
+
+  }
+
+/*if (window.location.pathname.includes("product-detail.html")) {
 const sendMessageBtn = document.getElementById("sendMessageBtn");
 
 if (sendMessageBtn) {
@@ -845,9 +943,9 @@ if (sendMessageBtn) {
 
     try {
       const buyerId = auth.currentUser.uid;
-const sellerId = product.sellerId;
+      const sellerId = product.sellerId;
 
-const conversationId = [buyerId, sellerId, productId].sort().join("_");
+      const conversationId = [buyerId, sellerId, productId].sort().join("_");
 
 await addDoc(collection(db, "messages"), {
   senderId: buyerId,
@@ -1450,7 +1548,7 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
     existingConvoId ||
     getConversationId(user.uid, otherUserId, productId);
 
-  try {
+  /*try {
     await addDoc(collection(db, "messages"), {
       conversationId,
       productId,
@@ -1459,7 +1557,33 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
       text,
       createdAt: serverTimestamp(),
       deletedBy: []
-    });
+    });*/
+    try {
+
+      const userDoc =
+        await getDoc(doc(db, "users", user.uid));
+    
+      const userData =
+        userDoc.data();
+    
+      await addDoc(collection(db, "messages"), {
+        conversationId,
+        productId,
+    
+        senderId: user.uid,
+    
+        senderName:
+          userData.fullName ||
+          user.email,
+    
+        receiverId: otherUserId,
+    
+        text,
+    
+        createdAt: serverTimestamp(),
+    
+        deletedBy: []
+      });
 
     input.value = "";
     console.log("Message sent in convo:", conversationId);
@@ -1525,8 +1649,8 @@ async function loadSellerMessages() {
       msg.senderId !== auth.currentUser.uid
     ) return;
 
-    const users = [msg.senderId, msg.receiverId].sort().join("_");
-    const convoId = `${users}_${msg.productId}`;
+    const convoId = msg.conversationId;
+    
     if (!conversations[convoId]) conversations[convoId] = [];
 
     conversations[convoId].push(msg);
@@ -1555,14 +1679,24 @@ for (const msgs of convoList) {
 
     msgs.forEach(msg => {
       if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
-
       const isMe = msg.senderId === auth.currentUser.uid;
+
+        const displayName =
+          isMe
+            ? "You"
+            : (msg.senderName || "Unknown User");
+
+        const time = msg.createdAt
+          ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
+          : "";
+
+      /*const isMe = msg.senderId === auth.currentUser.uid;
 
       const time = msg.createdAt
         ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-        : "";
+        : "";/*
 
-      chatHTML += `
+      /*chatHTML += `
         <div style="
           background:${isMe ? '#d1f7c4' : '#f1f1f1'};
           text-align:${isMe ? 'right' : 'left'};
@@ -1575,7 +1709,37 @@ for (const msgs of convoList) {
           <small style="font-size:10px; color:gray;">${time}</small>
         </div>
       `;
-    });
+    });*/
+chatHTML += `
+  <div style="
+    background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+    text-align:${isMe ? 'right' : 'left'};
+    margin:8px 0;
+    padding:12px;
+    border-radius:12px;
+  ">
+
+    <div style="
+      font-weight:bold;
+      margin-bottom:6px;
+    ">
+      ${displayName}
+    </div>
+
+    <div>
+      ${msg.text}
+    </div>
+
+    <small style="
+      color:gray;
+      font-size:10px;
+    ">
+      ${time}
+    </small>
+
+  </div>
+`;
+});
 
     const productImage = product.images?.[0] || product.imageURL || "";
 
@@ -1618,6 +1782,13 @@ async function loadBuyerMessages() {
   // ONLY ONE LOOP (correct one)
   snapshot.forEach(docSnap => {
     const msg = docSnap.data();
+    console.log(
+      "DOC:",
+      docSnap.id,
+      msg.conversationId,
+      msg.productId,
+      msg.text
+    );
     if (!msg.productId) return;
 
     if (
@@ -1626,8 +1797,8 @@ async function loadBuyerMessages() {
     ) return;
 
     // ALWAYS recompute conversationId
-    const users = [msg.senderId, msg.receiverId].sort().join("_");
-    const convoId = `${users}_${msg.productId}`;
+    const convoId = msg.conversationId;
+
     if (!conversations[convoId]) conversations[convoId] = [];
 
     conversations[convoId].push(msg);
@@ -1635,7 +1806,11 @@ async function loadBuyerMessages() {
 
   // render
   for (const convoId in conversations) {
-    const msgs = conversations[convoId];
+    const msgs = conversations[convoId].filter(
+      msg => !msg.deletedBy?.includes(auth.currentUser.uid)
+    );
+
+    if (msgs.length === 0) continue;
 
     msgs.sort((a, b) => {
       const getTime = (msg) => {
@@ -1671,13 +1846,24 @@ async function loadBuyerMessages() {
     msgs.forEach(msg => {
       if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
 
-      const isMe = msg.senderId === auth.currentUser.uid;
+        const isMe = msg.senderId === auth.currentUser.uid;
+
+        const displayName =
+          isMe
+            ? "You"
+            : (msg.senderName || "Unknown User");
+
+        const time = msg.createdAt
+          ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
+          : "";
+
+      /*const isMe = msg.senderId === auth.currentUser.uid;
 
       const time = msg.createdAt
         ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-        : "";
+        : "";*/
 
-      chatHTML += `
+      /*chatHTML += `
         <div style="
           background:${isMe ? '#d1f7c4' : '#f1f1f1'};
           text-align:${isMe ? 'right' : 'left'};
@@ -1685,12 +1871,45 @@ async function loadBuyerMessages() {
           padding:8px;
           border-radius:8px;
         ">
+        <strong>
+          ${msg.senderName || "Unknown User"}
+        </strong>
           ${msg.text}
           <br>
           <small style="font-size:10px; color:gray;">${time}</small>
         </div>
       `;
-    });
+    });*/
+chatHTML += `
+  <div style="
+    background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+    text-align:${isMe ? 'right' : 'left'};
+    margin:8px 0;
+    padding:12px;
+    border-radius:12px;
+  ">
+
+    <div style="
+      font-weight:bold;
+      margin-bottom:6px;
+    ">
+      ${displayName}
+    </div>
+
+    <div>
+      ${msg.text}
+    </div>
+
+    <small style="
+      color:gray;
+      font-size:10px;
+    ">
+      ${time}
+    </small>
+
+  </div>
+`;
+});
 
     const productImage = product.images?.[0] || product.imageURL || "";
 
@@ -1718,7 +1937,7 @@ async function loadBuyerMessages() {
 }
 
 
-/* ================= AUTH LOAD FOR MESSAGES PAGE ================= */
+/* ================= AUTH LOAD FOR MESSAGES PAGE ================= 
 
 if (window.location.pathname.includes("messages.html")) {
   onAuthStateChanged(auth, (user) => {
@@ -1726,7 +1945,7 @@ if (window.location.pathname.includes("messages.html")) {
       loadBuyerMessages();
     }
   });
-}
+}*/
 /* =========== Delect Conversation ========== */
 window.deleteChat = async function(conversationId, productId) {
   const user = auth.currentUser;

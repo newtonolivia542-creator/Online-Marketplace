@@ -1657,16 +1657,34 @@ async function loadSellerMessages() {
   });
 
   // GROUP BY PRODUCT (FIX DUPLICATES WITHOUT BREAKING REPLY)
-  const convoList = Object.values(conversations);
+  //const convoList = Object.values(conversations);
 
 // NOW RENDER
-for (const msgs of convoList) {
+//for (const msgs of convoList) {
   const convoId = msgs[0].conversationId;
   const firstMsg = msgs[0];
 
   const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
   const product = productDoc.exists() ? productDoc.data() : {};
   //console.log("Conversation ID:", msgs[0].conversationId);//
+
+  // SORT CONVERSATIONS BY MOST RECENT MESSAGE
+const convoList = Object.values(conversations)
+.sort((a, b) => {
+
+  const latestA = Math.max(
+    ...a.map(msg => msg.createdAt?.seconds || 0)
+  );
+
+  const latestB = Math.max(
+    ...b.map(msg => msg.createdAt?.seconds || 0)
+  );
+
+  return latestB - latestA; // newest first
+});
+
+// NOW RENDER
+for (const msgs of convoList) {
 
     //Sort message function//
     msgs.sort((a, b) => {
@@ -1744,24 +1762,228 @@ chatHTML += `
     const productImage = product.images?.[0] || product.imageURL || "";
 
     msgList.innerHTML += `
-      <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
-        <img src="${productImage}" width="80"><br>
-        <strong>${product.name || "Unknown Product"}</strong>
+      </li>
+    `;
+  }
+}*/
+
+async function loadSellerMessages() {
+  const msgList = document.getElementById("sellerMessages");
+
+  if (!msgList || !auth.currentUser) return;
+
+  const q = query(
+    collection(db, "messages"),
+    orderBy("createdAt", "asc")
+  );
+
+  const snapshot = await getDocs(q);
+
+  msgList.innerHTML = "";
+
+  const conversations = {};
+
+  snapshot.forEach(docSnap => {
+    const msg = docSnap.data();
+
+    if (
+      msg.receiverId !== auth.currentUser.uid &&
+      msg.senderId !== auth.currentUser.uid
+    ) {
+      return;
+    }
+
+    const convoId = msg.conversationId;
+
+    if (!conversations[convoId]) {
+      conversations[convoId] = [];
+    }
+
+    conversations[convoId].push(msg);
+  });
+
+  // Sort conversations by latest message
+  const convoList = Object.values(conversations).sort((a, b) => {
+
+    const latestA = Math.max(
+      ...a.map(msg => msg.createdAt?.seconds || 0)
+    );
+
+    const latestB = Math.max(
+      ...b.map(msg => msg.createdAt?.seconds || 0)
+    );
+
+    return latestB - latestA;
+  });
+
+  // Render conversations
+  for (const msgs of convoList) {
+
+    const visibleMsgs = msgs.filter(
+      msg => !msg.deletedBy?.includes(auth.currentUser.uid)
+    );
+
+    if (visibleMsgs.length === 0) continue;
+
+    visibleMsgs.sort((a, b) => {
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeA - timeB;
+    });
+
+    const convoId = visibleMsgs[0].conversationId;
+    const firstMsg = visibleMsgs[0];
+
+    let product = {};
+    
+    if (firstMsg.productId) {
+
+      try {
+    
+        const productDoc = await getDoc(
+          doc(db, "products", firstMsg.productId)
+        );
+    
+        if (!productDoc.exists()) {
+          continue; // skip this conversation entirely
+        }
+    
+        product = productDoc.data();
+    
+      } catch (err) {
+    
+        console.warn(
+          "Bad productId:",
+          firstMsg.productId
+        );
+    
+        continue;
+      }
+    }
+
+    /*if (firstMsg.productId) {
+      try {
+        const productDoc = await getDoc(
+          doc(db, "products", firstMsg.productId)
+        );
+
+        if (productDoc.exists()) {
+          product = productDoc.data();
+        }
+      } catch (err) {
+        console.warn(
+          "Bad productId:",
+          firstMsg.productId
+        );
+      }
+    }*/
+
+    let chatHTML = "";
+
+    visibleMsgs.forEach(msg => {
+
+      const isMe =
+        msg.senderId === auth.currentUser.uid;
+
+      const displayName =
+        isMe
+          ? "You"
+          : (msg.senderName || "Unknown User");
+
+      const time = msg.createdAt
+        ? new Date(
+            msg.createdAt.seconds * 1000
+          ).toLocaleString()
+        : "";
+
+      chatHTML += `
+        <div style="
+          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+          text-align:${isMe ? 'right' : 'left'};
+          margin:8px 0;
+          padding:12px;
+          border-radius:12px;
+        ">
+
+          <div style="
+            font-weight:bold;
+            margin-bottom:6px;
+          ">
+            ${displayName}
+          </div>
+
+          <div>
+            ${msg.text}
+          </div>
+
+          <small style="
+            color:gray;
+            font-size:10px;
+          ">
+            ${time}
+          </small>
+
+        </div>
+      `;
+    });
+
+    const productImage =
+      product.images?.[0] ||
+      product.imageURL ||
+      "";
+
+    msgList.innerHTML += `
+      <li style="
+        margin-bottom:20px;
+        border:1px solid #ccc;
+        padding:10px;
+      ">
+
+        <img
+          src="${productImage}"
+          width="80"
+        ><br>
+
+        <strong>
+          ${product.name || "Unknown Product"}
+        </strong>
 
         <div class="chat-box">
-          ${chatHTML}</div>
+          ${chatHTML}
+        </div>
 
-        <textarea id="seller-${convoId}" placeholder="Reply..."></textarea><br>
+        <textarea
+          id="seller-${convoId}"
+          placeholder="Reply..."
+        ></textarea><br>
 
-        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'seller-${convoId}')">
+        <button onclick="
+          handleReply(
+            '${convoId}',
+            '${getOtherUserId(visibleMsgs)}',
+            '${firstMsg.productId}',
+            'seller-${convoId}'
+          )
+        ">
           Reply
         </button>
 
-        <!-- FIXED BUTTON -->
-        <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
-          style="background:red; color:white; margin-top:10px;">
+        <button
+          onclick="
+            deleteChat(
+              '${convoId}',
+              '${firstMsg.productId}'
+            )
+          "
+          style="
+            background:red;
+            color:white;
+            margin-top:10px;
+          "
+        >
           Delete Chat
         </button>
+
       </li>
     `;
   }
@@ -1804,11 +2026,35 @@ async function loadBuyerMessages() {
     conversations[convoId].push(msg);
   });
 
+  //sorting the conversation//
+  const sortedConversations = Object.entries(conversations)
+  .sort(([, msgsA], [, msgsB]) => {
+
+    const latestA = Math.max(
+      ...msgsA.map(msg => msg.createdAt?.seconds || 0)
+    );
+
+    const latestB = Math.max(
+      ...msgsB.map(msg => msg.createdAt?.seconds || 0)
+    );
+
+    return latestB - latestA; // newest first
+  });
+
   // render
-  for (const convoId in conversations) {
+  /*for (const convoId in conversations) {
+  
     const msgs = conversations[convoId].filter(
       msg => !msg.deletedBy?.includes(auth.currentUser.uid)
-    );
+    );*/
+  // render
+for (const [convoId, msgsArray] of sortedConversations) {
+
+  const msgs = msgsArray.filter(
+    msg => !msg.deletedBy?.includes(auth.currentUser.uid)
+  );
+
+  if (msgs.length === 0) continue;
 
     if (msgs.length === 0) continue;
 
@@ -1829,7 +2075,7 @@ async function loadBuyerMessages() {
     //const product = productDoc.exists() ? productDoc.data() : {};
     let product = {};
 
-      if (firstMsg.productId) {
+     /* if (firstMsg.productId) {
         try {
         const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
         if (productDoc.exists()) {
@@ -1838,6 +2084,30 @@ async function loadBuyerMessages() {
       } catch (err) {
         console.warn("Bad productId:", firstMsg.productId);
       }
+    }*/
+      if (firstMsg.productId) {
+
+        try {
+      
+          const productDoc = await getDoc(
+            doc(db, "products", firstMsg.productId)
+          );
+      
+          if (!productDoc.exists()) {
+            continue; // skip this conversation entirely
+          }
+      
+          product = productDoc.data();
+      
+        } catch (err) {
+      
+          console.warn(
+            "Bad productId:",
+            firstMsg.productId
+          );
+      
+          continue;
+        }
     }
 
 

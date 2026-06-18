@@ -1625,9 +1625,9 @@ function getOtherUserId(messages) {
 }
 
 
-/* ================= LOAD SELLER MESSAGES ================= */;
+/* ================= LOAD SELLER MESSAGES ================= ;*/
 
-async function loadSellerMessages() {
+/*async function loadSellerMessages() {
   const msgList = document.getElementById("sellerMessages");
   if (!msgList || !auth.currentUser) return;
 
@@ -1728,7 +1728,7 @@ for (const msgs of convoList) {
         </div>
       `;
     });*/
-chatHTML += `
+/*chatHTML += `
   <div style="
     background:${isMe ? '#d1f7c4' : '#f1f1f1'};
     text-align:${isMe ? 'right' : 'left'};
@@ -1762,6 +1762,24 @@ chatHTML += `
     const productImage = product.images?.[0] || product.imageURL || "";
 
     msgList.innerHTML += `
+      <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
+        <img src="${productImage}" width="80"><br>
+        <strong>${product.name || "Unknown Product"}</strong>
+
+        <div class="chat-box">
+          ${chatHTML}</div>
+
+        <textarea id="seller-${convoId}" placeholder="Reply..."></textarea><br>
+
+        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'seller-${convoId}')">
+          Reply
+        </button>
+
+        <!-- FIXED BUTTON -->
+        <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
+          style="background:red; color:white; margin-top:10px;">
+          Delete Chat
+        </button>
       </li>
     `;
   }
@@ -2108,7 +2126,7 @@ for (const [convoId, msgsArray] of sortedConversations) {
       
           continue;
         }
-    }
+      }
 
 
     let chatHTML = "";

@@ -64,7 +64,7 @@ main {
   margin: 4px 0;
 }
 
-.buyBtn {
+/*.buyBtn {
   margin-top: 10px;
   width: 100%;
   background: #4facfe;
@@ -73,7 +73,7 @@ main {
   padding: 8px;
   border-radius: 6px;
   cursor: pointer;
-}
+}*/
 .addCartBtn {
   margin-top: 10px;
   background: #4facfe;

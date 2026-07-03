@@ -473,3 +473,99 @@ button[onclick]:hover {
   margin-bottom: 15px;
 
 }
+
+/* ========================================= */
+/* RESPONSIVE DESIGN */
+/* ========================================= */
+
+/* Tablets */
+@media screen and (max-width: 992px) {
+
+  header {
+    padding: 15px;
+  }
+
+  #productDetail {
+    margin: 20px;
+    padding: 20px;
+  }
+
+  #detailImage {
+    width: 60%;
+  }
+
+}
+
+/* Phones */
+@media screen and (max-width: 768px) {
+
+  header {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+
+  .search-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #searchInput {
+    width: 90%;
+  }
+
+  #searchBtn {
+    width: 90%;
+  }
+
+  #cartItems > div {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  #cartItems img {
+    width: 180px;
+    height: 180px;
+  }
+
+  #detailImage {
+    width: 100%;
+    max-height: 300px;
+  }
+
+  h1 {
+    margin-left: 0;
+    text-align: center;
+  }
+
+}
+
+/* Small Phones */
+@media screen and (max-width: 480px) {
+
+  main {
+    padding: 10px;
+  }
+
+  .product-grid,
+  #productList {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .buyBtn,
+  .addCartBtn {
+    width: 100%;
+    font-size: 14px;
+    padding: 8px;
+  }
+
+  .product-card {
+    padding: 10px;
+  }
+
+  .product-img {
+    max-height: 120px;
+  }
+
+}

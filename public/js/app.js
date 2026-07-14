@@ -3,6 +3,10 @@ import { sendPasswordResetEmail } from
 
 import { auth, db } from "./firebase.js";
 import {
+  getFunctions,
+  httpsCallable
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -36,6 +40,7 @@ import {
 let allProducts = [];
 let editingProductId = null;
 
+const functions = getFunctions();
 //const storage = getStorage();
 
 /* ================= REGISTER ================= */
@@ -255,14 +260,37 @@ if (productForm) {
       return;
     }
 
+    const selectedColors = Array.from(
+      document.getElementById("pColors").selectedOptions
+    ).map(option => option.value);
+    
+    const selectedSizes = Array.from(
+      document.getElementById("pSizes").selectedOptions
+    ).map(option => option.value);
+
     const productData = {
-      name: document.getElementById("pName").value,
+      name: document.getElementById("pName").value.trim(),
+    
+      brand: document.getElementById("pBrand").value.trim(),
+    
       price: Number(document.getElementById("pPrice").value),
+    
       quantity: Number(document.getElementById("quantity").value),
-      description: document.getElementById("pDesc").value,
+    
+      description: document.getElementById("pDesc").value.trim(),
+    
       images: imageURLs,
+    
       sellerId: auth.currentUser.uid,
+    
       category: document.getElementById("pCategory").value,
+    
+      condition: document.getElementById("pCondition").value,
+    
+      colors: selectedColors,
+    
+      sizes: selectedSizes,
+    
       createdAt: new Date()
     };
 
@@ -284,6 +312,105 @@ if (productForm) {
 
     productForm.reset();
   });
+}
+
+
+//AI Generated Function For S up//
+
+const generateBtn = document.getElementById("generateAI");
+
+if (generateBtn) {
+
+    generateBtn.addEventListener("click", async () => {
+
+        const productName = document.getElementById("pName").value.trim();
+        const category = document.getElementById("pCategory").value;
+        const price = document.getElementById("pPrice").value;
+        const descriptionBox = document.getElementById("pDesc");
+
+        if (!productName) {
+            alert("Please enter a product name first.");
+            return;
+        }
+
+        generateBtn.disabled = true;
+        generateBtn.innerText = "Generating...";
+
+    /*    try {
+
+            const response = await fetch(
+                "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/generateProductDescription",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        productName,
+                        category,
+                        condition: "New",
+                        price
+                    })
+                }
+            );
+
+            //const data = await response.json();
+            if (!response.ok) {
+              const error = await response.json();
+              console.error(error);
+              alert(error.error || "AI generation failed.");
+              return;
+          }
+          
+          const data = await response.json();
+
+            descriptionBox.value = data.description;
+
+        } catch (err) {
+
+            console.error(err);
+            alert("Failed to generate description.");
+
+        }*/
+            try {
+              const response = await fetch(
+                  "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/generateProductDescription",
+                  {
+                      method: "POST",
+                      headers: {
+                          "Content-Type": "application/json"
+                      },
+                      body: JSON.stringify({
+                          productName,
+                          category,
+                          condition: "New",
+                          price
+                      })
+                  }
+              );
+          
+              const data = await response.json();
+          
+              if (!response.ok) {
+                  console.error(data);
+                  alert(data.error || "AI generation failed.");
+              } else {
+                  descriptionBox.value = data.description;
+              }
+          
+          } catch (err) {
+              console.error(err);
+              alert("Failed to generate description.");
+          } finally {
+              generateBtn.disabled = false;
+              generateBtn.innerText = "✨ Generate with AI";
+          }
+
+        generateBtn.disabled = false;
+        generateBtn.innerText = "✨ Generate with AI";
+
+    });
+
 }
 
 /* ==========FUNCTION FOR SCRIPE ==================*/

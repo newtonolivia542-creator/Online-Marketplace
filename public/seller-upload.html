@@ -43,6 +43,57 @@
 
 
       <label for="pImage">Image ($)</label><br>
+      <label for="pBrand">Brand</label><br>
+
+      <input
+          type="text"
+          id="pBrand"
+          placeholder="Nike, Apple, Samsung, Sony..."
+          style="width:100%; margin-bottom:15px;"
+      >
+      <label for="pCondition">Condition</label><br>
+
+      <select
+          id="pCondition"
+          style="width:100%; margin-bottom:15px;"
+      >
+          <option value="New">New</option>
+          <option value="Like New">Like New</option>
+          <option value="Excellent">Excellent</option>
+          <option value="Good">Good</option>
+          <option value="Fair">Fair</option>
+          <option value="Used">Used</option>
+      </select>
+
+      <label for="pColors">Colors</label><br>
+
+      <select
+          id="pColors"
+          multiple
+          style="width:100%; margin-bottom:15px;"
+      >
+          <option value="Black">Black</option>
+          <option value="White">White</option>
+          <option value="Blue">Blue</option>
+          <option value="Red">Red</option>
+          <option value="Green">Green</option>
+      </select>
+
+      <label for="pSizes">Sizes</label><br>
+
+      <select
+          id="pSizes"
+          multiple
+          style="width:100%; margin-bottom:15px;"
+      >
+          <option value="XS">XS</option>
+          <option value="S">S</option>
+          <option value="M">M</option>
+          <option value="L">L</option>
+          <option value="XL">XL</option>
+          <option value="XXL">XXL</option>
+      </select>
+
       <input type="file" id="pImage" name="imageUpload" accept="images/*" multiple>
       
       <div id="imageGallery"></div>
@@ -57,6 +108,14 @@
         <option value="food">Food</option>
         <option value="other">Other</option>
       </select>
+
+    <button
+      type="button"
+      id="generateAI"
+      style="margin-bottom:15px;"
+    >
+          ✨ Generate with AI
+    </button>
 
       <div id="productList"></div>
 

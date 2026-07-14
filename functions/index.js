@@ -39,7 +39,7 @@ const { onRequest } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 
 const Stripe = require("stripe");
-const OpenAI = require("openai");
+const OpenAI = require("openai").default;
 
 exports.createPaymentIntent = onRequest(
   {

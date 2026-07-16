@@ -1133,45 +1133,49 @@ await addDoc(collection(db, "messages"), {
     loadAverageRating(productId);
     document.getElementById("detailDesc").innerText = product.description;
     document.getElementById("detailPrice").innerText = product.price;
+    //new function//
+    loadColors(product.colors);
+
+    loadSizes(product.sizes);
 
     //NEW FUNCTION FOR SHOWING AVAIABLE STOLK//
-const stockElement =
-  document.getElementById("detailQuantityAvailable");
+    const stockElement =
+      document.getElementById("detailQuantityAvailable");
 
-if (stockElement) {
+    if (stockElement) {
 
-  if (product.quantity <= 0) {
+      if (product.quantity <= 0) {
 
-    stockElement.innerHTML =
-      " ❌ Out of Stock";
+        stockElement.innerHTML =
+          " ❌ Out of Stock";
 
-    stockElement.style.color = "red";
+        stockElement.style.color = "red";
 
-    const addToCartBtn =
-      document.getElementById("addToCartBtn");
+        const addToCartBtn =
+          document.getElementById("addToCartBtn");
 
-    if (addToCartBtn) {
-      addToCartBtn.disabled = true;
-      addToCartBtn.innerText = "Out of Stock";
+        if (addToCartBtn) {
+          addToCartBtn.disabled = true;
+          addToCartBtn.innerText = "Out of Stock";
+        }
+
+      } else if (product.quantity <= 3) {
+
+        stockElement.innerHTML =
+          ` ⚠️ Only ${product.quantity} left!`;
+
+        stockElement.style.color = "orange";
+        stockElement.style.fontWeight = "bold";
+
+      } else {
+
+        stockElement.innerHTML =
+          ` ✅ ${product.quantity} available`;
+
+        stockElement.style.color = "green";
+      }
     }
-
-  } else if (product.quantity <= 3) {
-
-    stockElement.innerHTML =
-      ` ⚠️ Only ${product.quantity} left!`;
-
-    stockElement.style.color = "orange";
-    stockElement.style.fontWeight = "bold";
-
-  } else {
-
-    stockElement.innerHTML =
-      ` ✅ ${product.quantity} available`;
-
-    stockElement.style.color = "green";
-  }
-}
-  }
+      }
 
   // IMAGE BUTTONS
   document.getElementById("prevBtn").addEventListener("click", () => {
@@ -1197,45 +1201,106 @@ if (stockElement) {
   });
 
   // ADD TO CART
+
+const addToCartBtn = document.getElementById("addToCartBtn");
+// ================= ADD TO CART =================
+
 const addToCartBtn = document.getElementById("addToCartBtn");
 
 if (addToCartBtn) {
-  addToCartBtn.addEventListener("click", async () => {
 
-    const user = auth.currentUser;
+    addToCartBtn.addEventListener("click", async () => {
 
-    if (!user) {
-      alert("Please login first");
-      return;
-    }
+        const user = auth.currentUser;
 
-    const quantity =
-      Number(document.getElementById("detailQuantity").value);
+        if (!user) {
+            alert("Please login first");
+            return;
+        }
 
-    if (quantity < 1) {
-      alert("Quantity must be at least 1");
-      return;
-    }
+        const quantity = Number(
+            document.getElementById("detailQuantity").value
+        );
 
-    try {
+        if (quantity < 1) {
+            alert("Quantity must be at least 1");
+            return;
+        }
 
-      await addDoc(collection(db, "carts"), {
+        // Load latest product
+        const productSnap = await getDoc(
+            doc(db, "products", productId)
+        );
+
+        if (!productSnap.exists()) {
+            alert("Product not found.");
+            return;
+        }
+
+        const product = productSnap.data();
+
+        // Require color ONLY if seller added colors
+        if (
+            product.colors &&
+            product.colors.length > 0 &&
+            !selectedColor
+        ) {
+            alert("Please select a color.");
+            return;
+        }
+
+        // Require size ONLY if seller added sizes
+        if (
+            product.sizes &&
+            product.sizes.length > 0 &&
+            !selectedSize
+        ) {
+            alert("Please select a size.");
+            return;
+        }
+
+        // Build cart object
+        const cartData = {
+
         userId: user.uid,
-        productId: productId,
-        quantity: quantity,
-        createdAt: serverTimestamp()
-      });
 
-      alert("Product added to cart!");
+        productId: productId,
+
+        quantity: quantity,
+       // color:selectedColor,
+       // size:selectedSize,
+        createdAt: serverTimestamp()
+
+        };
+
+        if (selectedColor) {
+            cartData.color = selectedColor;
+        }
+
+        if (selectedSize) {
+            cartData.size = selectedSize;
+        }
+
+        try {
+
+            await addDoc(
+                collection(db, "carts"),
+                cartData
+            );
+
+            alert("Product added to cart!");
 
       window.location.href = "cart.html";
 
-    } catch (err) {
-      console.error(err);
-      alert("Failed to add to cart: " + err.message);
-    }
+        } catch (err) {
 
-  });
+            console.error(err);
+
+      alert("Failed to add to cart: " + err.message);
+
+        }
+
+    });
 }
 
 // LOAD PRODUCT
@@ -1286,6 +1351,10 @@ if (window.location.pathname.includes("cart.html")) {
 }
 
 /* ================= LOAD CART ITEMS (BUYER) ================= */
+let selectedColor = null;
+
+let selectedSize = null;
+
 async function loadCart() {
   const cartDiv = document.getElementById("cartItems");
   if (!cartDiv || !auth.currentUser) return;
@@ -1307,6 +1376,9 @@ async function loadCart() {
       <div class="cart-item">
         <img src="${product.images ? product.images[0] : product.imageURL}" class="product-img" width=120>
         <p>${product.name}</p>
+        <p><strong>Color:</strong> ${cartItem.color}</p>
+
+        <p><strong>Size:</strong> ${cartItem.size}</p>
         <p>Price: $${product.price}</p>
         <p>Quantity: ${cartItem.quantity}</p>
         <button onclick="removeFromCart('${docSnap.id}')">Remove</button>
@@ -1314,6 +1386,88 @@ async function loadCart() {
       <hr>
     `;
   }
+}
+//New Function For Colors//
+function loadColors(colors){
+
+  const container =
+  document.getElementById("colorOptions");
+
+  container.innerHTML="";
+
+  if(!colors || colors.length===0){
+
+      container.innerHTML="<p>No colors available.</p>";
+
+      return;
+
+  }
+
+  colors.forEach(color=>{
+
+      const chip=document.createElement("div");
+
+      chip.className="colorChip";
+
+      chip.innerText=color;
+
+      chip.onclick=()=>{
+
+          document
+          .querySelectorAll(".colorChip")
+          .forEach(c=>c.classList.remove("selected"));
+
+          chip.classList.add("selected");
+
+          selectedColor=color;
+
+      };
+
+      container.appendChild(chip);
+
+  });
+
+}
+//New Function For Sizes//
+function loadSizes(sizes){
+
+  const container=
+  document.getElementById("sizeOptions");
+
+  container.innerHTML="";
+
+  if(!sizes || sizes.length===0){
+
+      container.innerHTML="<p>No sizes available.</p>";
+
+      return;
+
+  }
+
+  sizes.forEach(size=>{
+
+      const chip=document.createElement("div");
+
+      chip.className="sizeChip";
+
+      chip.innerText=size;
+
+      chip.onclick=()=>{
+
+          document
+          .querySelectorAll(".sizeChip")
+          .forEach(c=>c.classList.remove("selected"));
+
+          chip.classList.add("selected");
+
+          selectedSize=size;
+
+      };
+
+      container.appendChild(chip);
+
+  });
+
 }
 
 // Remove from cart
@@ -1331,6 +1485,53 @@ if (checkoutBtn) {
     const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
     const snapshot = await getDocs(q);
 
+    }*/
+
+      //NEW FUNCTION FOR IT TO INCLUDE BUYER NAME, COLOR, AND QUATITY ORDER//
+      for (const docSnap of snapshot.docs) {
+
+        const order = docSnap.data();
+    
+        // Get buyer information
+        const buyerSnap = await getDoc(
+            doc(db, "users", order.userId)
+        );
+    
+        let buyerName = "Unknown Buyer";
+    
+        if (buyerSnap.exists()) {
+    
+            const buyer = buyerSnap.data();
+    
+            buyerName =
+                buyer.fullName ||
+                buyer.name ||
+                buyer.email ||
+                "Unknown Buyer";
+    
+        }
+    
+        // Get product info
+        const productSnap = await getDoc(
+            doc(db, "products", order.productId)
+        );
+        //New block Again//
+        let productName = "Unknown Product";
+        let productImage = "";
+        let productPrice = 0;
+        
+        if (productSnap.exists()) {
+        
+            const product = productSnap.data();
+        
+            productName = product.name || "Unknown Product";
+        
+            productImage =
+                product.images?.[0] ||
+                product.imageURL ||
+                "";
+        
+            productPrice = product.price || 0;
     if (snapshot.empty) return alert("Your cart is empty!");
 
     for (const docSnap of snapshot.docs) {
@@ -1382,6 +1583,14 @@ if (checkoutBtn) {
     for (const docSnap of snapshot.docs) {
 
       const cartItem = docSnap.data();
+    
+            <p><strong>Buyer:</strong> ${buyerName}</p>
+    
+            <p>
+    
+            <p><strong>Buyer:</strong> ${buyerName}</p>
+    
+            <p>
 
       // Get product info
       const productSnap = await getDoc(
@@ -1403,6 +1612,10 @@ if (checkoutBtn) {
 
         quantity: cartItem.quantity,
 
+        color: cartItem.color || null,
+
+        size: cartItem.size || null,
+
         price: product.price,
 
         status: "pending",
@@ -1410,6 +1623,26 @@ if (checkoutBtn) {
         createdAt: serverTimestamp()
 
       });
+
+    // =========================
+    // CREATE SELLER NOTIFICATION
+    // =========================
+
+    await addDoc(collection(db, "notifications"), {
+
+      userId: product.sellerId,
+
+      type: "new_order",
+
+      title: "New Order Received",
+
+      message: `${product.name} was purchased.`,
+
+      read: false,
+
+      createdAt: serverTimestamp()
+
+    });
 
       // Mark product sold
       /*await updateDoc(
@@ -1433,11 +1666,37 @@ if (checkoutBtn) {
     }
   );
 
+    // ===========================
+    // LOW INVENTORY NOTIFICATION
+    // ===========================
+
+  if (newQuantity <= 5 && newQuantity > 0) {
+
+    await addDoc(collection(db, "notifications"), {
+
+      userId: product.sellerId,
+
+      type: "low_stock",
+
+      title: "Low Inventory",
+
+      message: `Only ${newQuantity} ${product.name} left in stock.`,
+
+      read: false,
+
+      createdAt: serverTimestamp()
+
+    });
+
+    }
+
+
+
       // Remove from cart
       await deleteDoc(
         doc(db, "carts", docSnap.id)
       );
-    }
+    };
 
     alert("Checkout successful!");
 
@@ -1481,7 +1740,35 @@ async function loadSellerOrders() {
       const product = productSnap.data();
       productName = product.name;
       productImage = product.images?.[0] || product.imageURL || "";
+    }*/
+
+      for (const docSnap of snapshot.docs) {
+
+        const order = docSnap.data();
+    
+        // Get buyer information
+        const buyerSnap = await getDoc(
+            doc(db, "users", order.userId)
+        );
+    
+        let buyerName = "Unknown Buyer";
+    
+        if (buyerSnap.exists()) {
+    
+            const buyer = buyerSnap.data();
+    
+            buyerName =
+                buyer.fullName ||
+                buyer.name ||
+                buyer.email ||
+                "Unknown Buyer";
+    
     }
+    
+        // Get product info
+        const productSnap = await getDoc(
+            doc(db, "products", order.productId)
+        );
 
     let shipBtn = "";
     let deliverBtn = "";
@@ -1520,26 +1807,49 @@ async function loadSellerOrders() {
     else if (order.status === "shipped") statusColor = "blue";
     else if (order.status === "delivered") statusColor = "green";
 
+    const quantity = order.quantity || 1;
+
+    const total = productPrice * quantity;
+
     // FINAL UI
-sellerOrders.innerHTML += `
-  <li style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+    sellerOrders.innerHTML += `
+    <li style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
     
-    <img src="${productImage}" 
-         style="width:60px; height:60px; object-fit:cover; border-radius:8px;" />
-
-    <div>
-      <strong>${productName}</strong> |
-      Status: <span style="color:${statusColor}; font-weight:bold;">
-        ${order.status}
-      </span>
-      ${deliveryInfo}
-      <br>
-      ${shipBtn}
-      ${deliverBtn}
-    </div>
-
-  </li>
-`;
+        <img src="${productImage}"
+             style="width:60px;height:60px;object-fit:cover;border-radius:8px;">
+    
+        <div>
+    
+            <p><strong>Buyer:</strong> ${buyerName}</p>
+    
+            <p>
+                <strong>${productName}</strong> |
+                Status:
+                <span style="color:${statusColor};font-weight:bold;">
+                    ${order.status}
+                </span>
+            </p>
+    
+            <p><strong>Quantity:</strong> ${quantity}</p>
+    
+            ${order.color ? `<p><strong>Color:</strong> ${order.color}</p>` : ""}
+    
+            ${order.size ? `<p><strong>Size:</strong> ${order.size}</p>` : ""}
+    
+            <p><strong>Total:</strong> $${total.toFixed(2)}</p>
+    
+            ${deliveryInfo}
+    
+            <br>
+    
+            ${shipBtn}
+    
+            ${deliverBtn}
+    
+        </div>
+    
+    </li>
+    `;
   }
 }
 
@@ -1590,6 +1900,9 @@ async function loadSoldProducts() {
 
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
+    console.log(product);
+    console.log(product.colors);
+    console.log(product.sizes);
 
     // Only sold products
     //if (product.sold !== true) return;
@@ -2390,11 +2703,948 @@ window.deleteChat = async function(conversationId, productId) {
 
   await batch.commit();
 
-  loadSellerMessages?.();
+
+/* ================= SELLER NOTIFICATIONS ================= */
+
+function loadNotifications() {
+
+  const container = document.getElementById("notificationsList");
+
+  if (!container) return;
+
+  onAuthStateChanged(auth, (user) => {
+
+      if (!user) {
+          container.innerHTML = "<p>Please log in.</p>";
+          return;
+      }
+
+      console.log("Logged in Seller:", user.uid);
+
+      const notificationsQuery = query(
+          collection(db, "notifications"),
+          where("userId", "==", user.uid),
+          orderBy("createdAt", "desc")
+      );
+
+      onSnapshot(notificationsQuery, (snapshot) => {
+
+          container.innerHTML = "";
+
+          if (snapshot.empty) {
+
+              container.innerHTML = "<p>No notifications yet.</p>";
+              return;
+
+          }
+
+          snapshot.forEach((docSnap) => {
+
+              const notification = docSnap.data();
+
+              let date = "";
+
+              if (notification.createdAt) {
+                  date = notification.createdAt.toDate().toLocaleString();
+              }
+
+              container.innerHTML += `
+                  <div style="
+                      background:${notification.read ? "#ffffff" : "#eef6ff"};
+                      border:1px solid #ddd;
+                      border-left:5px solid #1E88E5;
+                      border-radius:10px;
+                      padding:15px;
+                      margin-bottom:12px;
+                  ">
+                      <h4 style="margin:0 0 6px 0;">
+                          ${notification.title}
+                      </h4>
+
+                      <p style="margin:0 0 8px 0;">
+                          ${notification.message}
+                      </p>
+
+                      <small style="color:gray;">
+                          ${date}
+                      </small>
+                  </div>
+              `;
+
+          });
+
+      }, (error) => {
+
+          console.error("Notification Error:", error);
+
+          container.innerHTML =
+              "<p>Failed to load notifications.</p>";
+
+      });
+
+  });
+
+}
+
+/* Run only on Seller Dashboard */
+if (window.location.pathname.includes("seller%20dashboard.html")) {
+
+  loadNotifications();
+
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+function loadNotifications() {
+
+  const container = document.getElementById("notificationsList");
+
+  if (!container) return;
+
+  onAuthStateChanged(auth, (user) => {
+
+      if (!user) {
+          container.innerHTML = "<p>Please log in.</p>";
+          return;
+      }
+
+      console.log("Logged in Seller:", user.uid);
+
+      const notificationsQuery = query(
+          collection(db, "notifications"),
+          where("userId", "==", user.uid),
+          orderBy("createdAt", "desc")
+      );
+
+      onSnapshot(notificationsQuery, (snapshot) => {
+
+          container.innerHTML = "";
+
+          if (snapshot.empty) {
+
+              container.innerHTML = "<p>No notifications yet.</p>";
+              return;
+
+          }
+
+          snapshot.forEach((docSnap) => {
+
+              const notification = docSnap.data();
+
+              let date = "";
+
+              if (notification.createdAt) {
+                  date = notification.createdAt.toDate().toLocaleString();
+              }
+
+              container.innerHTML += `
+                  <div style="
+                      background:${notification.read ? "#ffffff" : "#eef6ff"};
+                      border:1px solid #ddd;
+                      border-left:5px solid #1E88E5;
+                      border-radius:10px;
+                      padding:15px;
+                      margin-bottom:12px;
+                  ">
+                      <h4 style="margin:0 0 6px 0;">
+                          ${notification.title}
+                      </h4>
+
+                      <p style="margin:0 0 8px 0;">
+                          ${notification.message}
+                      </p>
+
+                      <small style="color:gray;">
+                          ${date}
+                      </small>
+                  </div>
+              `;
+
+          });
+
+      }, (error) => {
+
+          console.error("Notification Error:", error);
+
+          container.innerHTML =
+              "<p>Failed to load notifications.</p>";
+
+      });
+
+  });
+
+}
+
+/* Run only on Seller Dashboard */
+if (window.location.pathname.includes("seller%20dashboard.html")) {
+
+  loadNotifications();
+
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+function loadNotifications() {
+
+  const container = document.getElementById("notificationsList");
+
+  if (!container) return;
+
+  onAuthStateChanged(auth, (user) => {
+
+      if (!user) {
+          container.innerHTML = "<p>Please log in.</p>";
+          return;
+      }
+
+      console.log("Logged in Seller:", user.uid);
+
+      const notificationsQuery = query(
+          collection(db, "notifications"),
+          where("userId", "==", user.uid),
+          orderBy("createdAt", "desc")
+      );
+
+      onSnapshot(notificationsQuery, (snapshot) => {
+
+          container.innerHTML = "";
+
+          if (snapshot.empty) {
+
+              container.innerHTML = "<p>No notifications yet.</p>";
+              return;
+
+          }
+
+          snapshot.forEach((docSnap) => {
+
+              const notification = docSnap.data();
+
+              let date = "";
+
+              if (notification.createdAt) {
+                  date = notification.createdAt.toDate().toLocaleString();
+              }
+
+              container.innerHTML += `
+                  <div style="
+                      background:${notification.read ? "#ffffff" : "#eef6ff"};
+                      border:1px solid #ddd;
+                      border-left:5px solid #1E88E5;
+                      border-radius:10px;
+                      padding:15px;
+                      margin-bottom:12px;
+                  ">
+                      <h4 style="margin:0 0 6px 0;">
+                          ${notification.title}
+                      </h4>
+
+                      <p style="margin:0 0 8px 0;">
+                          ${notification.message}
+                      </p>
+
+                      <small style="color:gray;">
+                          ${date}
+                      </small>
+                  </div>
+              `;
+
+          });
+
+      }, (error) => {
+
+          console.error("Notification Error:", error);
+
+          container.innerHTML =
+              "<p>Failed to load notifications.</p>";
+
+      });
+
+  });
+
+}
+
+/* Run only on Seller Dashboard */
+if (window.location.pathname.includes("seller%20dashboard.html")) {
+
+  loadNotifications();
+
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+function loadNotifications() {
+
+  const container = document.getElementById("notificationsList");
+
+  if (!container) return;
+
+  onAuthStateChanged(auth, (user) => {
+
+      if (!user) {
+          container.innerHTML = "<p>Please log in.</p>";
+          return;
+      }
+
+      console.log("Logged in Seller:", user.uid);
+
+      const notificationsQuery = query(
+          collection(db, "notifications"),
+          where("userId", "==", user.uid),
+          orderBy("createdAt", "desc")
+      );
+
+      onSnapshot(notificationsQuery, (snapshot) => {
+
+          container.innerHTML = "";
+
+          if (snapshot.empty) {
+
+              container.innerHTML = "<p>No notifications yet.</p>";
+              return;
+
+          }
+
+          snapshot.forEach((docSnap) => {
+
+              const notification = docSnap.data();
+
+              let date = "";
+
+              if (notification.createdAt) {
+                  date = notification.createdAt.toDate().toLocaleString();
+              }
+
+              container.innerHTML += `
+                  <div style="
+                      background:${notification.read ? "#ffffff" : "#eef6ff"};
+                      border:1px solid #ddd;
+                      border-left:5px solid #1E88E5;
+                      border-radius:10px;
+                      padding:15px;
+                      margin-bottom:12px;
+                  ">
+                      <h4 style="margin:0 0 6px 0;">
+                          ${notification.title}
+                      </h4>
+
+                      <p style="margin:0 0 8px 0;">
+                          ${notification.message}
+                      </p>
+
+                      <small style="color:gray;">
+                          ${date}
+                      </small>
+                  </div>
+              `;
+
+          });
+
+      }, (error) => {
+
+          console.error("Notification Error:", error);
+
+          container.innerHTML =
+              "<p>Failed to load notifications.</p>";
+
+      });
+
+  });
+
+}
+
+/* Run only on Seller Dashboard */
+if (window.location.pathname.includes("seller%20dashboard.html")) {
+
+  loadNotifications();
+
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+      container.innerHTML += `
+          <div style="
+              border:1px solid #ddd;
+              border-radius:10px;
+              padding:15px;
+              margin-bottom:15px;
+              background:${notification.read ? "#fff" : "#eef6ff"};
+          ">
+              <h3>${notification.title}</h3>
+              <p>${notification.message}</p>
+              <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+}
+loadNotifications();
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+      container.innerHTML += `
+          <div style="
+              border:1px solid #ddd;
+              border-radius:10px;
+              padding:15px;
+              margin-bottom:15px;
+              background:${notification.read ? "#fff" : "#eef6ff"};
+          ">
+              <h3>${notification.title}</h3>
+              <p>${notification.message}</p>
+              <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+}
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+      container.innerHTML += `
+          <div style="
+              border:1px solid #ddd;
+              border-radius:10px;
+              padding:15px;
+              margin-bottom:15px;
+              background:${notification.read ? "#fff" : "#eef6ff"};
+          ">
+              <h3>${notification.title}</h3>
+              <p>${notification.message}</p>
+              <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+}
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+      container.innerHTML += `
+          <div style="
+              border:1px solid #ddd;
+              border-radius:10px;
+              padding:15px;
+              margin-bottom:15px;
+              background:${notification.read ? "#fff" : "#eef6ff"};
+          ">
+              <h3>${notification.title}</h3>
+              <p>${notification.message}</p>
+              <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+}
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+      container.innerHTML += `
+          <div style="
+              border:1px solid #ddd;
+              border-radius:10px;
+              padding:15px;
+              margin-bottom:15px;
+              background:${notification.read ? "#fff" : "#eef6ff"};
+          ">
+              <h3>${notification.title}</h3>
+              <p>${notification.message}</p>
+              <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+}
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}  loadSellerMessages?.();
   loadBuyerMessages?.();
 };
 
-// STORE INFORMATION FUNCTION //
+
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+      container.innerHTML += `
+          <div style="
+              border:1px solid #ddd;
+              border-radius:10px;
+              padding:15px;
+              margin-bottom:15px;
+              background:${notification.read ? "#fff" : "#eef6ff"};
+          ">
+              <h3>${notification.title}</h3>
+              <p>${notification.message}</p>
+              <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+        container.innerHTML += `
+            <div style="
+                border:1px solid #ddd;
+                border-radius:10px;
+                padding:15px;
+                margin-bottom:15px;
+                background:${notification.read ? "#fff" : "#eef6ff"};
+            ">
+                <h3>${notification.title}</h3>
+                <p>${notification.message}</p>
+                <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+        container.innerHTML += `
+            <div style="
+                border:1px solid #ddd;
+                border-radius:10px;
+                padding:15px;
+                margin-bottom:15px;
+                background:${notification.read ? "#fff" : "#eef6ff"};
+            ">
+                <h3>${notification.title}</h3>
+                <p>${notification.message}</p>
+                <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+        container.innerHTML += `
+            <div style="
+                border:1px solid #ddd;
+                border-radius:10px;
+                padding:15px;
+                margin-bottom:15px;
+                background:${notification.read ? "#fff" : "#eef6ff"};
+            ">
+                <h3>${notification.title}</h3>
+                <p>${notification.message}</p>
+                <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+}
+/* ================= SELLER NOTIFICATIONS ================= */
+
+async function loadNotifications() {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+        container.innerHTML += `
+            <div style="
+                border:1px solid #ddd;
+                border-radius:10px;
+                padding:15px;
+                margin-bottom:15px;
+                background:${notification.read ? "#fff" : "#eef6ff"};
+            ">
+                <h3>${notification.title}</h3>
+                <p>${notification.message}</p>
+                <small>${date}</small>
+            </div>
+        `;
+
+    });
+
+});
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
+}
+}// STORE INFORMATION FUNCTION //
 
 const saveStoreBtn = document.getElementById("saveStoreBtn");
 
@@ -2443,9 +3693,9 @@ async function loadStoreProfile() {
 
   const userDoc = await getDoc(
     doc(db, "users", auth.currentUser.uid)
-  );
-
-  if (!userDoc.exists()) return;
+          where("userId", "==", user.uid),
+          orderBy("createdAt", "desc")
+      );
 
   const data = userDoc.data();
 
@@ -2592,8 +3842,45 @@ if (submitReviewBtn) {
 
   });
 
-}
+}*/
 
+    // ===============================
+    // CREATE NOTIFICATION FOR SELLER
+    // ===============================
+
+    const productSnap = await getDoc(
+      doc(db, "products", productId)
+    );
+
+    if (productSnap.exists()) {
+
+      const product = productSnap.data();
+
+      await addDoc(collection(db, "notifications"), {
+
+        userId: product.sellerId,
+
+        type: "review",
+
+        title: "New Review",
+
+        message: `${product.name} received a new review.`,
+
+        read: false,
+
+        createdAt: serverTimestamp()
+
+      });
+
+    }
+
+    alert("Review submitted!");
+
+    window.location.href = "order.html";
+
+  });
+
+}
 //Submit function//
 window.toggleReview = function(productId) {
 
@@ -2651,4 +3938,75 @@ async function loadAverageRating(productId) {
 
   ratingElement.innerHTML =
     `${stars} ${average} (${snapshot.size} Reviews)`;
+}
+
+/* ================= SELLER NOTIFICATIONS ================= */
+
+function loadNotifications() {
+
+  const container = document.getElementById("notificationsList");
+
+  if (!container) return;
+
+  onAuthStateChanged(auth, (user) => {
+
+  const container =
+      document.getElementById("notificationsList");
+
+  if (!container || !auth.currentUser) return;
+
+  const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", auth.currentUser.uid),
+      orderBy("createdAt", "desc")
+  );
+
+  onSnapshot(q, (snapshot) => {
+
+    container.innerHTML = "";
+
+    if (snapshot.empty) {
+
+        container.innerHTML = "<p>No notifications yet.</p>";
+        return;
+
+    }
+
+    snapshot.forEach(docSnap => {
+
+        const notification = docSnap.data();
+
+        const date =
+            notification.createdAt
+            ? notification.createdAt.toDate().toLocaleString()
+            : "";
+
+      container.innerHTML += `
+          <div style="
+              border:1px solid #ddd;
+              border-radius:10px;
+              padding:15px;
+              margin-bottom:15px;
+              background:${notification.read ? "#fff" : "#eef6ff"};
+          "
+      >
+
+          <h3>${notification.title}</h3>
+
+          <p>${notification.message}</p>
+
+          <small>${date}</small>
+
+      </div>
+
+      `;
+
+  });
+
+}
+if (
+  window.location.pathname.includes("seller dashboard.html")) {
+
+  loadNotifications();
+
 }

@@ -330,6 +330,79 @@ h1 {
   border: 1px solid #ccc;
 }
 
+.optionContainer{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-bottom:20px;
+}
+
+.colorChip{
+
+  padding:10px 18px;
+
+  border:2px solid #ddd;
+
+  border-radius:30px;
+
+  cursor:pointer;
+
+  transition:.2s;
+
+  font-weight:bold;
+
+  user-select:none;
+
+}
+
+.colorChip:hover{
+
+  border-color:#007bff;
+
+}
+
+.colorChip.selected{
+
+  border:2px solid #007bff;
+
+  background:#eaf4ff;
+
+}
+
+.sizeChip{
+
+  padding:10px 18px;
+
+  border:2px solid #ddd;
+
+  border-radius:8px;
+
+  cursor:pointer;
+
+  transition:.2s;
+
+  font-weight:bold;
+
+  user-select:none;
+
+}
+
+.sizeChip:hover{
+
+  border-color:#007bff;
+
+}
+
+.sizeChip.selected{
+
+  border:2px solid #007bff;
+
+  background:#007bff;
+
+  color:white;
+
+}
+
 /* ===== BUTTONS ===== */
 #addToCartBtn {
   background: #4f46e5;

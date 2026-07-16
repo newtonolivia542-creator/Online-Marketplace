@@ -1200,9 +1200,6 @@ await addDoc(collection(db, "messages"), {
     document.getElementById("detailImage").src = productImages[currentImageIndex];
   });
 
-  // ADD TO CART
-
-const addToCartBtn = document.getElementById("addToCartBtn");
 // ================= ADD TO CART =================
 
 const addToCartBtn = document.getElementById("addToCartBtn");
@@ -1262,14 +1259,13 @@ if (addToCartBtn) {
         // Build cart object
         const cartData = {
 
-        userId: user.uid,
+            userId: user.uid,
 
-        productId: productId,
+            productId: productId,
 
-        quantity: quantity,
-       // color:selectedColor,
-       // size:selectedSize,
-        createdAt: serverTimestamp()
+            quantity: quantity,
+
+            createdAt: serverTimestamp()
 
         };
 
@@ -1290,13 +1286,13 @@ if (addToCartBtn) {
 
             alert("Product added to cart!");
 
-      window.location.href = "cart.html";
+            window.location.href = "cart.html";
 
         } catch (err) {
 
             console.error(err);
 
-      alert("Failed to add to cart: " + err.message);
+            alert("Failed to add to cart: " + err.message);
 
         }
 
@@ -1477,91 +1473,7 @@ window.removeFromCart = async (cartItems) => {
 };
 
 
-/* ===========CHECKOUT BUTTON ============= */
 
-/*const checkoutBtn = document.getElementById("checkoutBtn");
-if (checkoutBtn) {
-  checkoutBtn.addEventListener("click", async () => {
-    const q = query(collection(db, "carts"), where("userId", "==", auth.currentUser.uid));
-    const snapshot = await getDocs(q);
-
-    }*/
-
-      //NEW FUNCTION FOR IT TO INCLUDE BUYER NAME, COLOR, AND QUATITY ORDER//
-      for (const docSnap of snapshot.docs) {
-
-        const order = docSnap.data();
-    
-        // Get buyer information
-        const buyerSnap = await getDoc(
-            doc(db, "users", order.userId)
-        );
-    
-        let buyerName = "Unknown Buyer";
-    
-        if (buyerSnap.exists()) {
-    
-            const buyer = buyerSnap.data();
-    
-            buyerName =
-                buyer.fullName ||
-                buyer.name ||
-                buyer.email ||
-                "Unknown Buyer";
-    
-        }
-    
-        // Get product info
-        const productSnap = await getDoc(
-            doc(db, "products", order.productId)
-        );
-        //New block Again//
-        let productName = "Unknown Product";
-        let productImage = "";
-        let productPrice = 0;
-        
-        if (productSnap.exists()) {
-        
-            const product = productSnap.data();
-        
-            productName = product.name || "Unknown Product";
-        
-            productImage =
-                product.images?.[0] ||
-                product.imageURL ||
-                "";
-        
-            productPrice = product.price || 0;
-    if (snapshot.empty) return alert("Your cart is empty!");
-
-    for (const docSnap of snapshot.docs) {
-      const cartItem = docSnap.data();
-
-      // Create order
-      await addDoc(collection(db, "orders"), {
-        productId: cartItem.productId,
-        userId: auth.currentUser.uid,
-        quantity: cartItem.quantity,
-        status: "pending",
-        createdAt: new Date()
-      });
-
-      // Mark product as sold
-      await updateDoc(doc(db, "products", cartItem.productId), {
-        sold: true
-      });
-
-      // Remove from cart
-      await deleteDoc(doc(db, "carts", docSnap.id));
-    }
-
-    alert("Checkout successful!");
-    loadCart();   // refresh cart
-    loadProducts(); // refresh buyer dashboard
-    loadMyOrders(); // refresh orders page
-  });
-}
-*/
 const checkoutBtn = document.getElementById("checkoutBtn");
 
 if (checkoutBtn) {
@@ -1583,14 +1495,6 @@ if (checkoutBtn) {
     for (const docSnap of snapshot.docs) {
 
       const cartItem = docSnap.data();
-    
-            <p><strong>Buyer:</strong> ${buyerName}</p>
-    
-            <p>
-    
-            <p><strong>Buyer:</strong> ${buyerName}</p>
-    
-            <p>
 
       // Get product info
       const productSnap = await getDoc(
@@ -1725,23 +1629,8 @@ async function loadSellerOrders() {
 
   sellerOrders.innerHTML = "";
 
-  for (const docSnap of snapshot.docs) {
-    const order = docSnap.data();
 
-    // get product info
-    //const productSnap = await getDoc(doc(db, "products", order.productId));
-    //const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
-    const productSnap = await getDoc(doc(db, "products", order.productId));
-
-    let productName = "Unknown product";
-    let productImage = "";
-
-    if (productSnap.exists()) {
-      const product = productSnap.data();
-      productName = product.name;
-      productImage = product.images?.[0] || product.imageURL || "";
-    }*/
-
+      //NEW FUNCTION FOR IT TO INCLUDE BUYER NAME, COLOR, AND QUATITY ORDER//
       for (const docSnap of snapshot.docs) {
 
         const order = docSnap.data();
@@ -1763,12 +1652,30 @@ async function loadSellerOrders() {
                 buyer.email ||
                 "Unknown Buyer";
     
-    }
+        }
     
         // Get product info
         const productSnap = await getDoc(
             doc(db, "products", order.productId)
         );
+        //New block Again//
+        let productName = "Unknown Product";
+        let productImage = "";
+        let productPrice = 0;
+        
+        if (productSnap.exists()) {
+        
+            const product = productSnap.data();
+        
+            productName = product.name || "Unknown Product";
+        
+            productImage =
+                product.images?.[0] ||
+                product.imageURL ||
+                "";
+        
+            productPrice = product.price || 0;
+        }        
 
     let shipBtn = "";
     let deliverBtn = "";
@@ -1988,16 +1895,7 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
     existingConvoId ||
     getConversationId(user.uid, otherUserId, productId);
 
-  /*try {
-    await addDoc(collection(db, "messages"), {
-      conversationId,
-      productId,
-      senderId: user.uid,
-      receiverId: otherUserId,
-      text,
-      createdAt: serverTimestamp(),
-      deletedBy: []
-    });*/
+  
     try {
 
       const userDoc =
@@ -2064,166 +1962,6 @@ function getOtherUserId(messages) {
   return null;
 }
 
-
-/* ================= LOAD SELLER MESSAGES ================= ;*/
-
-/*async function loadSellerMessages() {
-  const msgList = document.getElementById("sellerMessages");
-  if (!msgList || !auth.currentUser) return;
-
-  const q = query(
-    collection(db, "messages"),
-    orderBy("createdAt", "asc") // oldest → newest
-  );
-
-  const snapshot = await getDocs(q);
-  msgList.innerHTML = "";
-
-  const conversations = {};
-
-  snapshot.forEach(docSnap => {
-    const msg = docSnap.data();
-
-    if (
-      msg.receiverId !== auth.currentUser.uid &&
-      msg.senderId !== auth.currentUser.uid
-    ) return;
-
-    const convoId = msg.conversationId;
-
-    if (!conversations[convoId]) conversations[convoId] = [];
-
-    conversations[convoId].push(msg);
-  });
-
-  // GROUP BY PRODUCT (FIX DUPLICATES WITHOUT BREAKING REPLY)
-  //const convoList = Object.values(conversations);
-
-// NOW RENDER
-//for (const msgs of convoList) {
-  const convoId = msgs[0].conversationId;
-  const firstMsg = msgs[0];
-
-  const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
-  const product = productDoc.exists() ? productDoc.data() : {};
-  //console.log("Conversation ID:", msgs[0].conversationId);//
-
-  // SORT CONVERSATIONS BY MOST RECENT MESSAGE
-const convoList = Object.values(conversations)
-.sort((a, b) => {
-
-  const latestA = Math.max(
-    ...a.map(msg => msg.createdAt?.seconds || 0)
-  );
-
-  const latestB = Math.max(
-    ...b.map(msg => msg.createdAt?.seconds || 0)
-  );
-
-  return latestB - latestA; // newest first
-});
-
-// NOW RENDER
-for (const msgs of convoList) {
-
-    //Sort message function//
-    msgs.sort((a, b) => {
-      const timeA = a.createdAt?.seconds || 0;
-      const timeB = b.createdAt?.seconds || 0;
-      return timeA - timeB;
-    });
-
-    let chatHTML = "";
-
-    msgs.forEach(msg => {
-      if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
-        const isMe = msg.senderId === auth.currentUser.uid;
-
-        const displayName =
-          isMe
-            ? "You"
-            : (msg.senderName || "Unknown User");
-
-        const time = msg.createdAt
-          ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-          : "";
-
-      /*const isMe = msg.senderId === auth.currentUser.uid;
-
-      const time = msg.createdAt
-        ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-        : "";/*
-
-      /*chatHTML += `
-        <div style="
-          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-          text-align:${isMe ? 'right' : 'left'};
-          margin:5px;
-          padding:8px;
-          border-radius:8px;
-        ">
-          ${msg.text}
-          <br>
-          <small style="font-size:10px; color:gray;">${time}</small>
-        </div>
-      `;
-    });*/
-/*chatHTML += `
-  <div style="
-    background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-    text-align:${isMe ? 'right' : 'left'};
-    margin:8px 0;
-    padding:12px;
-    border-radius:12px;
-  ">
-
-    <div style="
-      font-weight:bold;
-      margin-bottom:6px;
-    ">
-      ${displayName}
-    </div>
-
-    <div>
-      ${msg.text}
-    </div>
-
-    <small style="
-      color:gray;
-      font-size:10px;
-    ">
-      ${time}
-    </small>
-
-  </div>
-`;
-});
-
-    const productImage = product.images?.[0] || product.imageURL || "";
-
-    msgList.innerHTML += `
-      <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
-        <img src="${productImage}" width="80"><br>
-        <strong>${product.name || "Unknown Product"}</strong>
-
-        <div class="chat-box">
-          ${chatHTML}</div>
-
-        <textarea id="seller-${convoId}" placeholder="Reply..."></textarea><br>
-
-        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'seller-${convoId}')">
-          Reply
-        </button>
-
-        <!-- FIXED BUTTON -->
-        <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
-          style="background:red; color:white; margin-top:10px;">
-          Delete Chat
-        </button>
-      </li>
-    `;
-  }
-}*/
 
 async function loadSellerMessages() {
   const msgList = document.getElementById("sellerMessages");
@@ -2319,22 +2057,7 @@ async function loadSellerMessages() {
       }
     }
 
-    /*if (firstMsg.productId) {
-      try {
-        const productDoc = await getDoc(
-          doc(db, "products", firstMsg.productId)
-        );
-
-        if (productDoc.exists()) {
-          product = productDoc.data();
-        }
-      } catch (err) {
-        console.warn(
-          "Bad productId:",
-          firstMsg.productId
-        );
-      }
-    }*/
+    
 
     let chatHTML = "";
 
@@ -2499,13 +2222,7 @@ async function loadBuyerMessages() {
     return latestB - latestA; // newest first
   });
 
-  // render
-  /*for (const convoId in conversations) {
   
-    const msgs = conversations[convoId].filter(
-      msg => !msg.deletedBy?.includes(auth.currentUser.uid)
-    );*/
-  // render
 for (const [convoId, msgsArray] of sortedConversations) {
 
   const msgs = msgsArray.filter(
@@ -2533,16 +2250,7 @@ for (const [convoId, msgsArray] of sortedConversations) {
     //const product = productDoc.exists() ? productDoc.data() : {};
     let product = {};
 
-     /* if (firstMsg.productId) {
-        try {
-        const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
-        if (productDoc.exists()) {
-          product = productDoc.data();
-        }
-      } catch (err) {
-        console.warn("Bad productId:", firstMsg.productId);
-      }
-    }*/
+
       if (firstMsg.productId) {
 
         try {
@@ -2585,29 +2293,6 @@ for (const [convoId, msgsArray] of sortedConversations) {
           ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
           : "";
 
-      /*const isMe = msg.senderId === auth.currentUser.uid;
-
-      const time = msg.createdAt
-        ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-        : "";*/
-
-      /*chatHTML += `
-        <div style="
-          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-          text-align:${isMe ? 'right' : 'left'};
-          margin:5px;
-          padding:8px;
-          border-radius:8px;
-        ">
-        <strong>
-          ${msg.senderName || "Unknown User"}
-        </strong>
-          ${msg.text}
-          <br>
-          <small style="font-size:10px; color:gray;">${time}</small>
-        </div>
-      `;
-    });*/
 chatHTML += `
   <div style="
     background:${isMe ? '#d1f7c4' : '#f1f1f1'};
@@ -2703,948 +2388,11 @@ window.deleteChat = async function(conversationId, productId) {
 
   await batch.commit();
 
-
-/* ================= SELLER NOTIFICATIONS ================= */
-
-function loadNotifications() {
-
-  const container = document.getElementById("notificationsList");
-
-  if (!container) return;
-
-  onAuthStateChanged(auth, (user) => {
-
-      if (!user) {
-          container.innerHTML = "<p>Please log in.</p>";
-          return;
-      }
-
-      console.log("Logged in Seller:", user.uid);
-
-      const notificationsQuery = query(
-          collection(db, "notifications"),
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc")
-      );
-
-      onSnapshot(notificationsQuery, (snapshot) => {
-
-          container.innerHTML = "";
-
-          if (snapshot.empty) {
-
-              container.innerHTML = "<p>No notifications yet.</p>";
-              return;
-
-          }
-
-          snapshot.forEach((docSnap) => {
-
-              const notification = docSnap.data();
-
-              let date = "";
-
-              if (notification.createdAt) {
-                  date = notification.createdAt.toDate().toLocaleString();
-              }
-
-              container.innerHTML += `
-                  <div style="
-                      background:${notification.read ? "#ffffff" : "#eef6ff"};
-                      border:1px solid #ddd;
-                      border-left:5px solid #1E88E5;
-                      border-radius:10px;
-                      padding:15px;
-                      margin-bottom:12px;
-                  ">
-                      <h4 style="margin:0 0 6px 0;">
-                          ${notification.title}
-                      </h4>
-
-                      <p style="margin:0 0 8px 0;">
-                          ${notification.message}
-                      </p>
-
-                      <small style="color:gray;">
-                          ${date}
-                      </small>
-                  </div>
-              `;
-
-          });
-
-      }, (error) => {
-
-          console.error("Notification Error:", error);
-
-          container.innerHTML =
-              "<p>Failed to load notifications.</p>";
-
-      });
-
-  });
-
-}
-
-/* Run only on Seller Dashboard */
-if (window.location.pathname.includes("seller%20dashboard.html")) {
-
-  loadNotifications();
-
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-function loadNotifications() {
-
-  const container = document.getElementById("notificationsList");
-
-  if (!container) return;
-
-  onAuthStateChanged(auth, (user) => {
-
-      if (!user) {
-          container.innerHTML = "<p>Please log in.</p>";
-          return;
-      }
-
-      console.log("Logged in Seller:", user.uid);
-
-      const notificationsQuery = query(
-          collection(db, "notifications"),
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc")
-      );
-
-      onSnapshot(notificationsQuery, (snapshot) => {
-
-          container.innerHTML = "";
-
-          if (snapshot.empty) {
-
-              container.innerHTML = "<p>No notifications yet.</p>";
-              return;
-
-          }
-
-          snapshot.forEach((docSnap) => {
-
-              const notification = docSnap.data();
-
-              let date = "";
-
-              if (notification.createdAt) {
-                  date = notification.createdAt.toDate().toLocaleString();
-              }
-
-              container.innerHTML += `
-                  <div style="
-                      background:${notification.read ? "#ffffff" : "#eef6ff"};
-                      border:1px solid #ddd;
-                      border-left:5px solid #1E88E5;
-                      border-radius:10px;
-                      padding:15px;
-                      margin-bottom:12px;
-                  ">
-                      <h4 style="margin:0 0 6px 0;">
-                          ${notification.title}
-                      </h4>
-
-                      <p style="margin:0 0 8px 0;">
-                          ${notification.message}
-                      </p>
-
-                      <small style="color:gray;">
-                          ${date}
-                      </small>
-                  </div>
-              `;
-
-          });
-
-      }, (error) => {
-
-          console.error("Notification Error:", error);
-
-          container.innerHTML =
-              "<p>Failed to load notifications.</p>";
-
-      });
-
-  });
-
-}
-
-/* Run only on Seller Dashboard */
-if (window.location.pathname.includes("seller%20dashboard.html")) {
-
-  loadNotifications();
-
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-function loadNotifications() {
-
-  const container = document.getElementById("notificationsList");
-
-  if (!container) return;
-
-  onAuthStateChanged(auth, (user) => {
-
-      if (!user) {
-          container.innerHTML = "<p>Please log in.</p>";
-          return;
-      }
-
-      console.log("Logged in Seller:", user.uid);
-
-      const notificationsQuery = query(
-          collection(db, "notifications"),
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc")
-      );
-
-      onSnapshot(notificationsQuery, (snapshot) => {
-
-          container.innerHTML = "";
-
-          if (snapshot.empty) {
-
-              container.innerHTML = "<p>No notifications yet.</p>";
-              return;
-
-          }
-
-          snapshot.forEach((docSnap) => {
-
-              const notification = docSnap.data();
-
-              let date = "";
-
-              if (notification.createdAt) {
-                  date = notification.createdAt.toDate().toLocaleString();
-              }
-
-              container.innerHTML += `
-                  <div style="
-                      background:${notification.read ? "#ffffff" : "#eef6ff"};
-                      border:1px solid #ddd;
-                      border-left:5px solid #1E88E5;
-                      border-radius:10px;
-                      padding:15px;
-                      margin-bottom:12px;
-                  ">
-                      <h4 style="margin:0 0 6px 0;">
-                          ${notification.title}
-                      </h4>
-
-                      <p style="margin:0 0 8px 0;">
-                          ${notification.message}
-                      </p>
-
-                      <small style="color:gray;">
-                          ${date}
-                      </small>
-                  </div>
-              `;
-
-          });
-
-      }, (error) => {
-
-          console.error("Notification Error:", error);
-
-          container.innerHTML =
-              "<p>Failed to load notifications.</p>";
-
-      });
-
-  });
-
-}
-
-/* Run only on Seller Dashboard */
-if (window.location.pathname.includes("seller%20dashboard.html")) {
-
-  loadNotifications();
-
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-function loadNotifications() {
-
-  const container = document.getElementById("notificationsList");
-
-  if (!container) return;
-
-  onAuthStateChanged(auth, (user) => {
-
-      if (!user) {
-          container.innerHTML = "<p>Please log in.</p>";
-          return;
-      }
-
-      console.log("Logged in Seller:", user.uid);
-
-      const notificationsQuery = query(
-          collection(db, "notifications"),
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc")
-      );
-
-      onSnapshot(notificationsQuery, (snapshot) => {
-
-          container.innerHTML = "";
-
-          if (snapshot.empty) {
-
-              container.innerHTML = "<p>No notifications yet.</p>";
-              return;
-
-          }
-
-          snapshot.forEach((docSnap) => {
-
-              const notification = docSnap.data();
-
-              let date = "";
-
-              if (notification.createdAt) {
-                  date = notification.createdAt.toDate().toLocaleString();
-              }
-
-              container.innerHTML += `
-                  <div style="
-                      background:${notification.read ? "#ffffff" : "#eef6ff"};
-                      border:1px solid #ddd;
-                      border-left:5px solid #1E88E5;
-                      border-radius:10px;
-                      padding:15px;
-                      margin-bottom:12px;
-                  ">
-                      <h4 style="margin:0 0 6px 0;">
-                          ${notification.title}
-                      </h4>
-
-                      <p style="margin:0 0 8px 0;">
-                          ${notification.message}
-                      </p>
-
-                      <small style="color:gray;">
-                          ${date}
-                      </small>
-                  </div>
-              `;
-
-          });
-
-      }, (error) => {
-
-          console.error("Notification Error:", error);
-
-          container.innerHTML =
-              "<p>Failed to load notifications.</p>";
-
-      });
-
-  });
-
-}
-
-/* Run only on Seller Dashboard */
-if (window.location.pathname.includes("seller%20dashboard.html")) {
-
-  loadNotifications();
-
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-      container.innerHTML += `
-          <div style="
-              border:1px solid #ddd;
-              border-radius:10px;
-              padding:15px;
-              margin-bottom:15px;
-              background:${notification.read ? "#fff" : "#eef6ff"};
-          ">
-              <h3>${notification.title}</h3>
-              <p>${notification.message}</p>
-              <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-}
-loadNotifications();
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-      container.innerHTML += `
-          <div style="
-              border:1px solid #ddd;
-              border-radius:10px;
-              padding:15px;
-              margin-bottom:15px;
-              background:${notification.read ? "#fff" : "#eef6ff"};
-          ">
-              <h3>${notification.title}</h3>
-              <p>${notification.message}</p>
-              <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-}
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-      container.innerHTML += `
-          <div style="
-              border:1px solid #ddd;
-              border-radius:10px;
-              padding:15px;
-              margin-bottom:15px;
-              background:${notification.read ? "#fff" : "#eef6ff"};
-          ">
-              <h3>${notification.title}</h3>
-              <p>${notification.message}</p>
-              <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-}
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-      container.innerHTML += `
-          <div style="
-              border:1px solid #ddd;
-              border-radius:10px;
-              padding:15px;
-              margin-bottom:15px;
-              background:${notification.read ? "#fff" : "#eef6ff"};
-          ">
-              <h3>${notification.title}</h3>
-              <p>${notification.message}</p>
-              <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-}
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-      container.innerHTML += `
-          <div style="
-              border:1px solid #ddd;
-              border-radius:10px;
-              padding:15px;
-              margin-bottom:15px;
-              background:${notification.read ? "#fff" : "#eef6ff"};
-          ">
-              <h3>${notification.title}</h3>
-              <p>${notification.message}</p>
-              <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-}
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}  loadSellerMessages?.();
+  loadSellerMessages?.();
   loadBuyerMessages?.();
 };
 
-
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-      container.innerHTML += `
-          <div style="
-              border:1px solid #ddd;
-              border-radius:10px;
-              padding:15px;
-              margin-bottom:15px;
-              background:${notification.read ? "#fff" : "#eef6ff"};
-          ">
-              <h3>${notification.title}</h3>
-              <p>${notification.message}</p>
-              <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-        container.innerHTML += `
-            <div style="
-                border:1px solid #ddd;
-                border-radius:10px;
-                padding:15px;
-                margin-bottom:15px;
-                background:${notification.read ? "#fff" : "#eef6ff"};
-            ">
-                <h3>${notification.title}</h3>
-                <p>${notification.message}</p>
-                <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-        container.innerHTML += `
-            <div style="
-                border:1px solid #ddd;
-                border-radius:10px;
-                padding:15px;
-                margin-bottom:15px;
-                background:${notification.read ? "#fff" : "#eef6ff"};
-            ">
-                <h3>${notification.title}</h3>
-                <p>${notification.message}</p>
-                <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-        container.innerHTML += `
-            <div style="
-                border:1px solid #ddd;
-                border-radius:10px;
-                padding:15px;
-                margin-bottom:15px;
-                background:${notification.read ? "#fff" : "#eef6ff"};
-            ">
-                <h3>${notification.title}</h3>
-                <p>${notification.message}</p>
-                <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-}
-/* ================= SELLER NOTIFICATIONS ================= */
-
-async function loadNotifications() {
-
-  const container =
-      document.getElementById("notificationsList");
-
-  if (!container || !auth.currentUser) return;
-
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
-
-  onSnapshot(q, (snapshot) => {
-
-    container.innerHTML = "";
-
-    if (snapshot.empty) {
-
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
-
-    }
-
-    snapshot.forEach(docSnap => {
-
-        const notification = docSnap.data();
-
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
-
-        container.innerHTML += `
-            <div style="
-                border:1px solid #ddd;
-                border-radius:10px;
-                padding:15px;
-                margin-bottom:15px;
-                background:${notification.read ? "#fff" : "#eef6ff"};
-            ">
-                <h3>${notification.title}</h3>
-                <p>${notification.message}</p>
-                <small>${date}</small>
-            </div>
-        `;
-
-    });
-
-});
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
-
-  loadNotifications();
-
-}
-}// STORE INFORMATION FUNCTION //
+// STORE INFORMATION FUNCTION //
 
 const saveStoreBtn = document.getElementById("saveStoreBtn");
 
@@ -3693,9 +2441,9 @@ async function loadStoreProfile() {
 
   const userDoc = await getDoc(
     doc(db, "users", auth.currentUser.uid)
-          where("userId", "==", user.uid),
-          orderBy("createdAt", "desc")
-      );
+  );
+
+  if (!userDoc.exists()) return;
 
   const data = userDoc.data();
 
@@ -3836,7 +2584,7 @@ if (submitReviewBtn) {
       }
     );
 
-    alert("Review submitted!");
+   /* alert("Review submitted!");
 
     window.location.href = "order.html";
 
@@ -3950,62 +2698,79 @@ function loadNotifications() {
 
   onAuthStateChanged(auth, (user) => {
 
-  const container =
-      document.getElementById("notificationsList");
+      if (!user) {
+          container.innerHTML = "<p>Please log in.</p>";
+          return;
+      }
 
-  if (!container || !auth.currentUser) return;
+      console.log("Logged in Seller:", user.uid);
 
-  const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", auth.currentUser.uid),
-      orderBy("createdAt", "desc")
-  );
+      const notificationsQuery = query(
+        collection(db, "notifications"),
+        where("userId", "==", user.uid)
+    );
 
-  onSnapshot(q, (snapshot) => {
+      onSnapshot(notificationsQuery, (snapshot) => {
 
-    container.innerHTML = "";
+          container.innerHTML = "";
 
-    if (snapshot.empty) {
+          if (snapshot.empty) {
 
-        container.innerHTML = "<p>No notifications yet.</p>";
-        return;
+              container.innerHTML = "<p>No notifications yet.</p>";
+              return;
 
-    }
+          }
 
-    snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap) => {
 
-        const notification = docSnap.data();
+              const notification = docSnap.data();
 
-        const date =
-            notification.createdAt
-            ? notification.createdAt.toDate().toLocaleString()
-            : "";
+              let date = "";
 
-      container.innerHTML += `
-          <div style="
-              border:1px solid #ddd;
-              border-radius:10px;
-              padding:15px;
-              margin-bottom:15px;
-              background:${notification.read ? "#fff" : "#eef6ff"};
-          "
-      >
+              if (notification.createdAt) {
+                  date = notification.createdAt.toDate().toLocaleString();
+              }
 
-          <h3>${notification.title}</h3>
+              container.innerHTML += `
+                  <div style="
+                      background:${notification.read ? "#ffffff" : "#eef6ff"};
+                      border:1px solid #ddd;
+                      border-left:5px solid #1E88E5;
+                      border-radius:10px;
+                      padding:15px;
+                      margin-bottom:12px;
+                  ">
+                      <h4 style="margin:0 0 6px 0;">
+                          ${notification.title}
+                      </h4>
 
-          <p>${notification.message}</p>
+                      <p style="margin:0 0 8px 0;">
+                          ${notification.message}
+                      </p>
 
-          <small>${date}</small>
+                      <small style="color:gray;">
+                          ${date}
+                      </small>
+                  </div>
+              `;
 
-      </div>
+          });
 
-      `;
+      }, (error) => {
+
+          console.error("Notification Error:", error);
+
+          container.innerHTML =
+              "<p>Failed to load notifications.</p>";
+
+      });
 
   });
 
 }
-if (
-  window.location.pathname.includes("seller dashboard.html")) {
+
+/* Run only on Seller Dashboard */
+if (window.location.pathname.includes("seller%20dashboard.html")) {
 
   loadNotifications();
 

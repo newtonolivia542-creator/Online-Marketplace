@@ -1542,6 +1542,8 @@ if (checkoutBtn) {
 
       message: `${product.name} was purchased.`,
 
+      link: `seller-orders.html?orderId=${orderRef.id}`,
+
       read: false,
 
       createdAt: serverTimestamp()
@@ -1585,6 +1587,8 @@ if (checkoutBtn) {
       title: "Low Inventory",
 
       message: `Only ${newQuantity} ${product.name} left in stock.`,
+
+      link:`seller-dashboard.html?productId=${productId}`,
 
       read: false,
 
@@ -1921,6 +1925,17 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
         createdAt: serverTimestamp(),
     
         deletedBy: []
+      });
+      // ⬇️ PUT THE NOTIFICATION CODE HERE
+
+      await addDoc(collection(db, "notifications"), {
+          userId: sellerId,
+          type: "message",
+          title: "New Message",
+          message: `${buyerName} sent you a message.`,
+          link: `messages.html?conversationId=${conversationId}`,
+          read: false,
+          createdAt: serverTimestamp()
       });
 
     input.value = "";
@@ -2604,7 +2619,15 @@ if (submitReviewBtn) {
 
       const product = productSnap.data();
 
-      await addDoc(collection(db, "notifications"), {
+    console.log("Creating message notification...");
+    console.log("Current User:", user.uid);
+    console.log("Receiver:", otherUserId);
+    console.log("Conversation:", conversationId);
+    console.log("Product:", productId);
+
+      
+
+    await addDoc(collection(db, "notifications"), {
 
         userId: product.sellerId,
 
@@ -2613,6 +2636,8 @@ if (submitReviewBtn) {
         title: "New Review",
 
         message: `${product.name} received a new review.`,
+
+        link: `reviews.html?productId=${productId}`,
 
         read: false,
 
@@ -2698,80 +2723,155 @@ function loadNotifications() {
 
   onAuthStateChanged(auth, (user) => {
 
-      if (!user) {
-          container.innerHTML = "<p>Please log in.</p>";
-          return;
-      }
+              if (!user) {
+                  container.innerHTML = "<p>Please log in.</p>";
+                  return;
+              }
 
-      console.log("Logged in Seller:", user.uid);
-
-      const notificationsQuery = query(
-        collection(db, "notifications"),
-        where("userId", "==", user.uid)
-    );
+              const notificationsQuery = query(
+                  collection(db, "notifications"),
+                  where("userId", "==", user.uid)
+              );
 
       onSnapshot(notificationsQuery, (snapshot) => {
 
           container.innerHTML = "";
+
+      const badge =
+          document.getElementById("notificationBadge");
+
+      let unreadCount = 0;          
 
           if (snapshot.empty) {
 
               container.innerHTML = "<p>No notifications yet.</p>";
               return;
 
-          }
+                      if (badge) {
+                          badge.style.display = "none";
+                      }
 
-          snapshot.forEach((docSnap) => {
+                      return;
+                  }
+
+      snapshot.forEach((docSnap) => {
 
               const notification = docSnap.data();
 
-              let date = "";
+                      if (!notification.read) {
+                          unreadCount++;
+                      }
 
-              if (notification.createdAt) {
-                  date = notification.createdAt.toDate().toLocaleString();
-              }
+          // Choose icon
+          let icon = "🔔";
 
-              container.innerHTML += `
-                  <div style="
+          switch (notification.type) {
+
+              case "new_order":
+                  icon = "🛒";
+                  break;
+
+              case "review":
+                  icon = "⭐";
+                  break;
+
+              case "message":
+                  icon = "💬";
+                  break;
+
+              case "delivered":
+                  icon = "🚚";
+                  break;
+
+              case "cancelled":
+                  icon = "❌";
+                  break;
+
+          }
+
+          const date = notification.createdAt
+              ? notification.createdAt.toDate().toLocaleString()
+              : "";
+
+          container.innerHTML += `
+              <div
+                  class="notification-card"
+                  data-id="${docSnap.id}"
+                  style="
+                      cursor:pointer;
                       background:${notification.read ? "#ffffff" : "#eef6ff"};
                       border:1px solid #ddd;
-                      border-left:5px solid #1E88E5;
+                      border-left:5px solid ${notification.read ? "#cccccc" : "#1E88E5"};
                       border-radius:10px;
                       padding:15px;
                       margin-bottom:12px;
-                  ">
-                      <h4 style="margin:0 0 6px 0;">
-                          ${notification.title}
-                      </h4>
+                  "
+              >
 
-                      <p style="margin:0 0 8px 0;">
-                          ${notification.message}
-                      </p>
+                  <h4>${icon} ${notification.title}</h4>
 
-                      <small style="color:gray;">
-                          ${date}
-                      </small>
-                  </div>
-              `;
+                  <p>${notification.message}</p>
 
-          });
+                  <small>${date}</small>
 
-      }, (error) => {
+              </div>
+          `;
+
+                  });
+
+                  // Update badge
+                  if (badge) {
+
+                      if (unreadCount > 0) {
+
+                          badge.style.display = "inline-block";
+                          badge.innerText = unreadCount;
+
+                      } else {
+
+                          badge.style.display = "none";
+
+                      }
+
+                  }
+
+                  // Mark notification as read
+                  document.querySelectorAll(".notification-card").forEach(card => {
+
+            card.addEventListener("click", async () => {
+
+                await updateDoc(
+
+                    doc(db,"notifications",card.dataset.id),
+
+                    {
+
+                        read:true
+
+                    }
+
+                );
+
+            });
+
+        });
+
+            }, (error) => {
 
           console.error("Notification Error:", error);
 
-          container.innerHTML =
-              "<p>Failed to load notifications.</p>";
+                container.innerHTML =
+                    "<p>Failed to load notifications.</p>";
 
-      });
+            });
 
-  });
+        });
 
-}
+      }
 
-/* Run only on Seller Dashboard */
-if (window.location.pathname.includes("seller%20dashboard.html")) {
+      /* Run only on Seller Dashboard */
+      if (window.location.pathname.includes("seller%20dashboard.html")) {
 
-  loadNotifications();
+        loadNotifications();
 
-}
+      }

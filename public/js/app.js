@@ -1004,36 +1004,36 @@ if (window.location.pathname.includes("product-detail.html")) {
             deletedBy: []
           }
         );*/
-const userDoc =
-  await getDoc(
-    doc(db, "users", buyerId)
-  );
+      const userDoc =
+        await getDoc(
+          doc(db, "users", buyerId)
+        );
 
-const userData =
-  userDoc.data();
+      const userData =
+        userDoc.data();
 
-await addDoc(
-  collection(db, "messages"),
-  {
-    senderId: buyerId,
+      await addDoc(
+        collection(db, "messages"),
+        {
+          senderId: buyerId,
 
-    senderName:
-      userData.fullName ||
-      auth.currentUser.email,
+          senderName:
+            userData.fullName ||
+            auth.currentUser.email,
 
-    receiverId: sellerId,
+          receiverId: sellerId,
 
-    productId,
+          productId,
 
-    conversationId,
+          conversationId,
 
-    text,
+          text,
 
-    createdAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
 
-    deletedBy: []
-  }
-);
+          deletedBy: []
+        }
+      );
 
         alert("Message sent!");
 
@@ -1928,15 +1928,28 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
       });
       // ⬇️ PUT THE NOTIFICATION CODE HERE
 
-      await addDoc(collection(db, "notifications"), {
-          userId: sellerId,
-          type: "message",
-          title: "New Message",
-          message: `${buyerName} sent you a message.`,
-          link: `messages.html?conversationId=${conversationId}`,
-          read: false,
-          createdAt: serverTimestamp()
-      });
+    const senderName =
+        userData.fullName ||
+        user.displayName ||
+        user.email;
+
+    await addDoc(collection(db, "notifications"), {
+
+        userId: otherUserId,
+
+        type: "message",
+
+        title: "New Message",
+
+        message: `${senderName} sent you a message.`,
+
+        link: `messages.html?conversationId=${conversationId}`,
+
+        read: false,
+
+        createdAt: serverTimestamp()
+
+    });
 
     input.value = "";
     console.log("Message sent in convo:", conversationId);
@@ -2611,6 +2624,8 @@ if (submitReviewBtn) {
     // CREATE NOTIFICATION FOR SELLER
     // ===============================
 
+    console.log("sendMessage() is running");
+
     const productSnap = await getDoc(
       doc(db, "products", productId)
     );
@@ -2643,8 +2658,9 @@ if (submitReviewBtn) {
 
         createdAt: serverTimestamp()
 
-      });
+    });
 
+    console.log("Notification saved successfully.");
     }
 
     alert("Review submitted!");
@@ -2715,13 +2731,17 @@ async function loadAverageRating(productId) {
 
 /* ================= SELLER NOTIFICATIONS ================= */
 
-function loadNotifications() {
+      function loadNotifications() {
+          console.log("loadNotifications() started");
 
-  const container = document.getElementById("notificationsList");
 
-  if (!container) return;
+          const container = document.getElementById("notificationsList");
+          const badge = document.getElementById("notificationBadge");
 
-  onAuthStateChanged(auth, (user) => {
+          if (!container) return;
+
+          onAuthStateChanged(auth, (user) => {
+            console.log(user);
 
               if (!user) {
                   container.innerHTML = "<p>Please log in.</p>";
@@ -2730,22 +2750,19 @@ function loadNotifications() {
 
               const notificationsQuery = query(
                   collection(db, "notifications"),
-                  where("userId", "==", user.uid)
+                  where("userId","==",user.uid),
               );
+              console.log("Query created");
 
-      onSnapshot(notificationsQuery, (snapshot) => {
+              onSnapshot(notificationsQuery, (snapshot) => {
 
-          container.innerHTML = "";
+                  container.innerHTML = "";
 
-      const badge =
-          document.getElementById("notificationBadge");
+                  let unreadCount = 0;
 
-      let unreadCount = 0;          
+                  if (snapshot.empty) {
 
-          if (snapshot.empty) {
-
-              container.innerHTML = "<p>No notifications yet.</p>";
-              return;
+                      container.innerHTML = "<p>No notifications yet.</p>";
 
                       if (badge) {
                           badge.style.display = "none";
@@ -2754,68 +2771,81 @@ function loadNotifications() {
                       return;
                   }
 
-      snapshot.forEach((docSnap) => {
+                  snapshot.forEach((docSnap) => {
+                    console.log(snapshot.size);
 
-              const notification = docSnap.data();
+                      const notification = docSnap.data();
 
                       if (!notification.read) {
                           unreadCount++;
                       }
 
-          // Choose icon
-          let icon = "🔔";
+                      // Notification icon
+                      let icon = "🔔";
 
-          switch (notification.type) {
+                      switch (notification.type) {
 
-              case "new_order":
-                  icon = "🛒";
-                  break;
+                          case "new_order":
+                              icon = "🛒";
+                              break;
 
-              case "review":
-                  icon = "⭐";
-                  break;
+                          case "review":
+                              icon = "⭐";
+                              break;
 
-              case "message":
-                  icon = "💬";
-                  break;
+                          case "message":
+                              icon = "💬";
+                              break;
 
-              case "delivered":
-                  icon = "🚚";
-                  break;
+                          case "delivered":
+                              icon = "🚚";
+                              break;
 
-              case "cancelled":
-                  icon = "❌";
-                  break;
+                          case "cancelled":
+                              icon = "❌";
+                              break;
 
-          }
+                          case "low_stock":
+                              icon = "⚠️";
+                              break;
 
-          const date = notification.createdAt
-              ? notification.createdAt.toDate().toLocaleString()
-              : "";
+                      }
 
-          container.innerHTML += `
-              <div
-                  class="notification-card"
-                  data-id="${docSnap.id}"
-                  style="
-                      cursor:pointer;
-                      background:${notification.read ? "#ffffff" : "#eef6ff"};
-                      border:1px solid #ddd;
-                      border-left:5px solid ${notification.read ? "#cccccc" : "#1E88E5"};
-                      border-radius:10px;
-                      padding:15px;
-                      margin-bottom:12px;
-                  "
-              >
+                      const date = notification.createdAt
+                          ? notification.createdAt.toDate().toLocaleString()
+                          : "";
 
-                  <h4>${icon} ${notification.title}</h4>
+                      container.innerHTML += `
+                          <div
+                              class="notification-card"
+                              data-id="${docSnap.id}"
+                              data-link="${notification.link || ''}"
+                              style="
+                                  cursor:pointer;
+                                  background:${notification.read ? "#ffffff" : "#eef6ff"};
+                                  border:1px solid #ddd;
+                                  border-left:5px solid ${notification.read ? "#cccccc" : "#1E88E5"};
+                                  border-radius:10px;
+                                  padding:15px;
+                                  margin-bottom:12px;
+                                  transition:0.2s;
+                              "
+                          >
 
-                  <p>${notification.message}</p>
+                              <h4 style="margin:0 0 8px 0;">
+                                  ${icon} ${notification.title}
+                              </h4>
 
-                  <small>${date}</small>
+                              <p style="margin:0 0 8px 0;">
+                                  ${notification.message}
+                              </p>
 
-              </div>
-          `;
+                              <small style="color:gray;">
+                                  ${date}
+                              </small>
+
+                          </div>
+                      `;
 
                   });
 
@@ -2841,36 +2871,38 @@ function loadNotifications() {
             card.addEventListener("click", async () => {
 
                 await updateDoc(
-
-                    doc(db,"notifications",card.dataset.id),
-
+                    doc(db, "notifications", card.dataset.id),
                     {
-
-                        read:true
-
+                        read: true
                     }
-
                 );
 
-            });
+                if (card.dataset.link) {
 
+                    window.location.href = card.dataset.link;
+
+                }
+
+         
+              });
         });
 
-            }, (error) => {
+              }, (error) => {
 
-          console.error("Notification Error:", error);
+                  console.error("Notification Error:", error);
 
-                container.innerHTML =
-                    "<p>Failed to load notifications.</p>";
+                  container.innerHTML =
+                      "<p>Failed to load notifications.</p>";
 
-            });
+              });
 
-        });
+          });
 
       }
 
+
       /* Run only on Seller Dashboard */
-      if (window.location.pathname.includes("seller%20dashboard.html")) {
+      if (window.location.pathname.includes("seller-notifications.html")) {
 
         loadNotifications();
 

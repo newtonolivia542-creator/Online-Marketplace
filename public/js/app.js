@@ -117,6 +117,13 @@ if (loginForm) {
 }
 
 /* ================= AUTH STATE ================= */
+const params = new URLSearchParams(window.location.search);
+
+const conversationId =
+    params.get("conversationId");
+
+console.log("Conversation from URL:", conversationId);
+
 onAuthStateChanged(auth, async (user) => {
   const currentPage = window.location.pathname;
 
@@ -1926,14 +1933,71 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
     
         deletedBy: []
       });
-      // ⬇️ PUT THE NOTIFICATION CODE HERE
+
+    input.value = "";
+    console.log("Message sent in convo:", conversationId);
+
+  } catch (error) {
+    console.error("Error sending message:", error);
+  }
+}*/
+
+// Send message (USED EVERYWHERE)
+async function sendMessage(productId, otherUserId, inputId, existingConvoId = null) {
+
+    const input = document.getElementById(inputId);
+    const text = input.value.trim();
+
+    if (!text) return;
+
+    const user = auth.currentUser;
+
+    if (!user) {
+        alert("You must be logged in");
+        return;
+    }
+
+    const conversationId =
+        existingConvoId ||
+        getConversationId(user.uid, otherUserId, productId);
+
+    try {
+
+        // Get sender information
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        const userData = userDoc.exists() ? userDoc.data() : {};
 
     const senderName =
         userData.fullName ||
         user.displayName ||
         user.email;
 
-    await addDoc(collection(db, "notifications"), {
+        // Save message
+        await addDoc(collection(db, "messages"), {
+
+            conversationId,
+            productId,
+
+            senderId: user.uid,
+            senderName: senderName,
+
+            receiverId: otherUserId,
+
+            text,
+
+            createdAt: serverTimestamp(),
+
+            deletedBy: []
+
+        });
+
+        // ===============================
+        // CREATE MESSAGE NOTIFICATION
+        // ===============================
+
+        try {
+
+            await addDoc(collection(db, "notifications"), {
 
         userId: otherUserId,
 
@@ -1943,20 +2007,38 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
 
         message: `${senderName} sent you a message.`,
 
-        link: `messages.html?conversationId=${conversationId}`,
+                // IMPORTANT
+                link: `seller-messages.html?conversationId=${conversationId}`,
 
         read: false,
 
         createdAt: serverTimestamp()
 
-    });
+            });
+
+            console.log("Message notification created.");
+
+        } catch (notificationError) {
+
+            console.error(
+                "Notification Error:",
+                notificationError
+            );
+
+        }
 
     input.value = "";
     console.log("Message sent in convo:", conversationId);
 
-  } catch (error) {
-    console.error("Error sending message:", error);
-  }
+    } catch (error) {
+
+        console.error(
+            "Error sending message:",
+            error
+        );
+
+    }
+
 }
 
 // Handle reply from UI
@@ -2085,7 +2167,22 @@ async function loadSellerMessages() {
       }
     }
 
-    
+    /*if (firstMsg.productId) {
+      try {
+        const productDoc = await getDoc(
+          doc(db, "products", firstMsg.productId)
+        );
+
+        if (productDoc.exists()) {
+          product = productDoc.data();
+        }
+      } catch (err) {
+        console.warn(
+          "Bad productId:",
+          firstMsg.productId
+        );
+      }
+    }*/
 
     let chatHTML = "";
 
@@ -2251,6 +2348,10 @@ async function loadBuyerMessages() {
   });
 
   
+    const msgs = conversations[convoId].filter(
+      msg => !msg.deletedBy?.includes(auth.currentUser.uid)
+    );*/
+  // render
 for (const [convoId, msgsArray] of sortedConversations) {
 
   const msgs = msgsArray.filter(
@@ -2321,6 +2422,29 @@ for (const [convoId, msgsArray] of sortedConversations) {
           ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
           : "";
 
+      /*const isMe = msg.senderId === auth.currentUser.uid;
+
+      const time = msg.createdAt
+        ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
+        : "";*/
+
+      /*chatHTML += `
+        <div style="
+          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+          text-align:${isMe ? 'right' : 'left'};
+          margin:5px;
+          padding:8px;
+          border-radius:8px;
+        ">
+        <strong>
+          ${msg.senderName || "Unknown User"}
+        </strong>
+          ${msg.text}
+          <br>
+          <small style="font-size:10px; color:gray;">${time}</small>
+        </div>
+      `;
+    });*/
 chatHTML += `
   <div style="
     background:${isMe ? '#d1f7c4' : '#f1f1f1'};

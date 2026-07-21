@@ -1888,7 +1888,7 @@ function getConversationId(user1, user2, productId) {
   return `${sortedUsers[0]}_${sortedUsers[1]}_${productId}`;
 }
 
-// Send message (USED EVERYWHERE)
+/*// Send message (USED EVERYWHERE)
 async function sendMessage(productId, otherUserId, inputId, existingConvoId = null) {
   const input = document.getElementById(inputId);
   const text = input.value.trim();
@@ -1904,10 +1904,9 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
   // USE EXISTING conversationId IF AVAILABLE
   const conversationId =
     existingConvoId ||
-    getConversationId(user.uid, otherUserId, productId);
+    getConversationId(user.uid, otherUserId, productId);*/
 
-  
-    try {
+    /*try {
 
       const userDoc =
         await getDoc(doc(db, "users", user.uid));
@@ -1967,10 +1966,10 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
         const userDoc = await getDoc(doc(db, "users", user.uid));
         const userData = userDoc.exists() ? userDoc.data() : {};
 
-    const senderName =
-        userData.fullName ||
-        user.displayName ||
-        user.email;
+        const senderName =
+            userData.fullName ||
+            user.displayName ||
+            user.email;
 
         // Save message
         await addDoc(collection(db, "messages"), {
@@ -1991,44 +1990,67 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
 
         });
 
-        // ===============================
-        // CREATE MESSAGE NOTIFICATION
-        // ===============================
+      // ===============================
+      // CREATE MESSAGE NOTIFICATION
+      // ===============================
 
-        try {
+      try {
 
-            await addDoc(collection(db, "notifications"), {
+          // Find receiver role
+          const receiverDoc = await getDoc(
+              doc(db, "users", otherUserId)
+          );
 
-        userId: otherUserId,
+      let messagePage = "messages.html"; // Default
 
-        type: "message",
+      if (receiverDoc.exists()) {
 
-        title: "New Message",
+          const receiverData = receiverDoc.data();
 
-        message: `${senderName} sent you a message.`,
+          if (receiverData.role === "seller") {
+              messagePage = "seller-messages.html";
+          } else if (receiverData.role === "buyer") {
+              messagePage = "buyer-messages.html";
+          }
 
-                // IMPORTANT
-                link: `seller-messages.html?conversationId=${conversationId}`,
+      }
 
-        read: false,
+          // Create notification
+          await addDoc(collection(db, "notifications"), {
 
-        createdAt: serverTimestamp()
+              userId: otherUserId,
 
-            });
+              type: "message",
 
-            console.log("Message notification created.");
+              title: "New Message",
 
-        } catch (notificationError) {
+              message: `${senderName} sent you a message.`,
 
-            console.error(
-                "Notification Error:",
-                notificationError
-            );
+              link: `${messagePage}?conversationId=${conversationId}`,
 
-        }
+              read: false,
 
-    input.value = "";
-    console.log("Message sent in convo:", conversationId);
+              createdAt: serverTimestamp()
+
+          });
+
+          console.log("Message notification created.");
+
+      } catch (notificationError) {
+
+          console.error(
+              "Notification Error:",
+              notificationError
+          );
+
+      }
+// not included//
+        input.value = "";
+
+        console.log(
+            "Message sent:",
+            conversationId
+        );
 
     } catch (error) {
 
@@ -2167,22 +2189,7 @@ async function loadSellerMessages() {
       }
     }
 
-    /*if (firstMsg.productId) {
-      try {
-        const productDoc = await getDoc(
-          doc(db, "products", firstMsg.productId)
-        );
-
-        if (productDoc.exists()) {
-          product = productDoc.data();
-        }
-      } catch (err) {
-        console.warn(
-          "Bad productId:",
-          firstMsg.productId
-        );
-      }
-    }*/
+    
 
     let chatHTML = "";
 
@@ -2347,6 +2354,8 @@ async function loadBuyerMessages() {
     return latestB - latestA; // newest first
   });
 
+  // render
+  /*for (const convoId in conversations) {
   
     const msgs = conversations[convoId].filter(
       msg => !msg.deletedBy?.includes(auth.currentUser.uid)
@@ -2379,7 +2388,16 @@ for (const [convoId, msgsArray] of sortedConversations) {
     //const product = productDoc.exists() ? productDoc.data() : {};
     let product = {};
 
-
+     /* if (firstMsg.productId) {
+        try {
+        const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
+        if (productDoc.exists()) {
+          product = productDoc.data();
+        }
+      } catch (err) {
+        console.warn("Bad productId:", firstMsg.productId);
+      }
+    }*/
       if (firstMsg.productId) {
 
         try {
@@ -2422,29 +2440,7 @@ for (const [convoId, msgsArray] of sortedConversations) {
           ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
           : "";
 
-      /*const isMe = msg.senderId === auth.currentUser.uid;
-
-      const time = msg.createdAt
-        ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-        : "";*/
-
-      /*chatHTML += `
-        <div style="
-          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-          text-align:${isMe ? 'right' : 'left'};
-          margin:5px;
-          padding:8px;
-          border-radius:8px;
-        ">
-        <strong>
-          ${msg.senderName || "Unknown User"}
-        </strong>
-          ${msg.text}
-          <br>
-          <small style="font-size:10px; color:gray;">${time}</small>
-        </div>
-      `;
-    });*/
+          
 chatHTML += `
   <div style="
     background:${isMe ? '#d1f7c4' : '#f1f1f1'};

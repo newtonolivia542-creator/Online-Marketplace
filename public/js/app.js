@@ -1513,6 +1513,27 @@ if (checkoutBtn) {
       const product = productSnap.data();
 
       // Create order
+    /*  await addDoc(collection(db, "orders"), {
+
+        productId: cartItem.productId,
+
+        sellerId: product.sellerId,
+
+        userId: auth.currentUser.uid,
+
+        quantity: cartItem.quantity,
+
+        color: cartItem.color || null,
+
+        size: cartItem.size || null,
+
+        price: product.price,
+
+        status: "pending",
+
+        createdAt: serverTimestamp()
+
+      });*/
       await addDoc(collection(db, "orders"), {
 
         productId: cartItem.productId,
@@ -2227,6 +2248,17 @@ async function loadSellerMessages() {
 
           <div>
             ${msg.text}
+
+            <div class="message-status">
+
+            ${msg.isRead
+                ? "💙 Read"
+
+                : msg.delivered
+                    ? "✔✔ Delivered"
+
+                    : "✔ Sent"}
+
           </div>
 
           <small style="
@@ -2712,10 +2744,16 @@ if (submitReviewBtn) {
     const userData =
       userDoc.data();
 
+  const product = productSnap.data();
+
     await addDoc(
       collection(db, "reviews"),
       {
         productId,
+
+        productName: product.name,
+
+        sellerId: product.sellerId,
 
         buyerId: auth.currentUser.uid,
 
@@ -2740,9 +2778,9 @@ if (submitReviewBtn) {
 
 }*/
 
-    // ===============================
-    // CREATE NOTIFICATION FOR SELLER
-    // ===============================
+        // ===============================
+        // CREATE REVIEW NOTIFICATION
+        // ===============================
 
     console.log("sendMessage() is running");
 
@@ -2753,14 +2791,6 @@ if (submitReviewBtn) {
     if (productSnap.exists()) {
 
       const product = productSnap.data();
-
-    console.log("Creating message notification...");
-    console.log("Current User:", user.uid);
-    console.log("Receiver:", otherUserId);
-    console.log("Conversation:", conversationId);
-    console.log("Product:", productId);
-
-      
 
     await addDoc(collection(db, "notifications"), {
 
@@ -2781,6 +2811,11 @@ if (submitReviewBtn) {
     });
 
     console.log("Notification saved successfully.");
+        } catch (error) {
+
+        console.error("Failed to create review notification:", error);
+
+    }
     }
 
     alert("Review submitted!");
@@ -2964,6 +2999,21 @@ async function loadAverageRating(productId) {
                                   ${date}
                               </small>
 
+                              <button
+                              class="delete-notification"
+                              data-id="${docSnap.id}"
+                              style="
+                                  margin-top:10px;
+                                  background:#dc3545;
+                                  color:white;
+                                  border:none;
+                                  padding:6px 10px;
+                                  border-radius:5px;
+                                  cursor:pointer;
+                              ">
+                              Delete
+                          </button>
+
                           </div>
                       `;
 
@@ -3007,6 +3057,37 @@ async function loadAverageRating(productId) {
               });
         });
 
+          // Delete notification
+          document.querySelectorAll(".delete-notification").forEach(button => {
+
+              button.addEventListener("click", async (e) => {
+
+                  // Stop the notification card from opening
+                  e.stopPropagation();
+
+                  if (!confirm("Delete this notification?")) {
+                      return;
+                  }
+
+                  try {
+
+                      await deleteDoc(
+                          doc(db, "notifications", button.dataset.id)
+                      );
+
+                      console.log("Notification deleted.");
+
+                  } catch (error) {
+
+                      console.error("Error deleting notification:", error);
+
+                  }
+
+              });
+
+          });
+
+
               }, (error) => {
 
                   console.error("Notification Error:", error);
@@ -3019,6 +3100,91 @@ async function loadAverageRating(productId) {
           });
 
       }
+
+    //LOAD SELLER REVIEW//
+    async function loadSellerReviews() {
+
+        const container =
+            document.getElementById("sellerReviewsContainer");
+
+        if (!container || !auth.currentUser) return;
+
+        container.innerHTML = "<p>Loading reviews...</p>";
+
+        // Get seller's products
+        const productsQuery = query(
+            collection(db, "products"),
+            where("sellerId", "==", auth.currentUser.uid)
+        );
+
+        const productsSnapshot =
+            await getDocs(productsQuery);
+
+        container.innerHTML = "";
+
+        if (productsSnapshot.empty) {
+
+            container.innerHTML =
+                "<p>You have not listed any products.</p>";
+
+            return;
+        }
+
+        let foundReviews = false;
+
+            for (const productDoc of productsSnapshot.docs) {
+
+            const product =
+                productDoc.data();
+
+            const reviewsQuery = query(
+                collection(db, "reviews"),
+                where("productId", "==", productDoc.id)
+            );
+
+            const reviewsSnapshot =
+                await getDocs(reviewsQuery);
+
+            reviewsSnapshot.forEach(reviewDoc => {
+
+                foundReviews = true;
+
+                const review =
+                    reviewDoc.data();
+
+                const stars =
+                    "★".repeat(review.rating) +
+                    "☆".repeat(5 - review.rating);
+
+                container.innerHTML += `
+                    <div class="review-card">
+
+                        <h3>${product.name}</h3>
+
+                        <p><strong>${stars}</strong></p>
+
+                        <p>${review.comment}</p>
+
+                        <small>
+                            By ${review.buyerName}
+                        </small>
+
+                        <hr>
+
+                    </div>
+                `;
+            });
+
+        }
+            if (!foundReviews) {
+
+            container.innerHTML =
+                "<p>No reviews yet.</p>";
+
+        }
+
+    }
+
 
 
       /* Run only on Seller Dashboard */

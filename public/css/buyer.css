@@ -112,3 +112,7 @@
   width: 100%;
   border-radius: 6px;
 }
+.highlight-order {
+    border: 3px solid #28a745 !important;
+    box-shadow: 0 0 15px rgba(40,167,69,.5);
+}

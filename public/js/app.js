@@ -731,6 +731,11 @@ if(closeCheckout){
 
 /* ================= CUSTOMER ORDERS ================= */
 async function loadMyOrders() {
+  //july 22//
+  const selectedOrderId =
+    new URLSearchParams(window.location.search)
+    .get("orderId");
+//ends above//
   const orderList = document.getElementById("orderList");
   if (!orderList || !auth.currentUser) return;
 
@@ -822,10 +827,33 @@ async function loadMyOrders() {
         : ""
       }
 
-    </div>
-
   </div>
 `;
+//new add july 22//
+if (docSnap.id === selectedOrderId) {
+
+    setTimeout(() => {
+
+        const card =
+            document.getElementById(`order-${docSnap.id}`);
+
+        if (card) {
+
+            card.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+
+        card.classList.add("highlight-order");
+        }
+
+        setTimeout(() => {
+            card.classList.remove("highlight-order");
+        }, 5000);
+
+    }, 300);
+
+}
 }
 }
 
@@ -1795,6 +1823,15 @@ async function loadSellerOrders() {
 // ================= SHIP ORDER =================
 window.markShipped = async (orderId) => {
   try {
+    //july 22, new try//
+    const orderSnap = await getDoc(doc(db, "orders", orderId));
+
+    if (!orderSnap.exists()) {
+        alert("Order not found.");
+        return;
+    }
+
+    const order = orderSnap.data();
     await updateDoc(doc(db, "orders", orderId), {
       status: "shipped",
       shippedAt: new Date() // save timestamp
@@ -1811,10 +1848,41 @@ window.markShipped = async (orderId) => {
 // ================= DELIVER ORDER =================
 window.markDelivered = async (orderId) => {
   try {
+    //NEW JUY 22//
+    const orderSnap = await getDoc(
+    doc(db, "orders", orderId)
+    );
+
+    if (!orderSnap.exists()) {
+        alert("Order not found.");
+        return;
+    }
+
+    const order = orderSnap.data();
+    //ENDS ABOVE//
+
     await updateDoc(doc(db, "orders", orderId), {
       status: "delivered",
       deliveredAt: new Date() // save timestamp
     });
+  await addDoc(collection(db, "notifications"), {
+
+    userId: order.userId,
+
+    type: "delivered",
+
+    title: "Order Delivered",
+
+    message: `Your order for "${order.productName}" has been delivered. Please leave a review.`,
+
+    link: `reviews.html?productId=${order.productId}`,
+
+    read: false,
+
+    createdAt: serverTimestamp()
+
+});
+
 
     alert("Order marked as delivered");
     loadSellerOrders();
@@ -3257,7 +3325,17 @@ if (submitReviewBtn) {
 
 
       /* Run only on Seller Dashboard */
-      if (window.location.pathname.includes("seller-notifications.html")) {
+   /*   if (window.location.pathname.includes("seller-notifications.html")) {
+
+        loadNotifications();
+
+      }*/
+      /* Run Notifications Page */
+
+      if (
+          window.location.pathname.includes("seller-notifications.html") ||
+          window.location.pathname.includes("buyer-notifications.html")
+      ) {
 
         loadNotifications();
 

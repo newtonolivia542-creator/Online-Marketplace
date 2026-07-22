@@ -781,7 +781,10 @@ async function loadMyOrders() {
   //ENDS HERE//
 
   orderList.innerHTML += `
-  <div class="order-details">
+   <div
+    id="order-${docSnap.id}"
+    class="order-details"
+  >
       <h3>${productName}</h3>
       <img src="${image}" class="product-img" style="width: 200px;">
 
@@ -849,6 +852,7 @@ if (docSnap.id === selectedOrderId) {
 
         setTimeout(() => {
             card.classList.remove("highlight-order");
+            console.log(card.className);
         }, 5000);
 
     }, 300);
@@ -1832,10 +1836,39 @@ window.markShipped = async (orderId) => {
     }
 
     const order = orderSnap.data();
+
+    const productSnap = await getDoc(
+    doc(db, "products", order.productId)
+    );
+
+    const productName = productSnap.exists()
+        ? productSnap.data().name
+        : "Unknown Product";
+    //ends above//
+
     await updateDoc(doc(db, "orders", orderId), {
       status: "shipped",
       shippedAt: new Date() // save timestamp
     });
+    //new one too july 22//
+
+    await addDoc(collection(db, "notifications"), {
+
+    userId: order.userId,
+
+    type: "shipped",
+
+    title: "Order Shipped",
+
+    message: `Your order for "${productName}" has been shipped.`,
+
+    link: "order.html",
+
+    read: false,
+
+    createdAt: serverTimestamp()
+
+});
 
     alert("Order marked as shipped");
     loadSellerOrders();
@@ -1859,12 +1892,22 @@ window.markDelivered = async (orderId) => {
     }
 
     const order = orderSnap.data();
+
+    const productSnap = await getDoc(
+        doc(db, "products", order.productId)
+    );
+
+    const productName = productSnap.exists()
+        ? productSnap.data().name
+        : "Unknown Product";
     //ENDS ABOVE//
 
     await updateDoc(doc(db, "orders", orderId), {
       status: "delivered",
       deliveredAt: new Date() // save timestamp
     });
+    //NEW ONE TOO JULY 22//
+
   await addDoc(collection(db, "notifications"), {
 
     userId: order.userId,
@@ -1873,16 +1916,16 @@ window.markDelivered = async (orderId) => {
 
     title: "Order Delivered",
 
-    message: `Your order for "${order.productName}" has been delivered. Please leave a review.`,
+    message: `Your order for "${productName}" has been delivered. Please leave a review.`,
 
-    link: `reviews.html?productId=${order.productId}`,
+    link: `order.html?orderId=${orderId}`,
 
     read: false,
 
     createdAt: serverTimestamp()
 
 });
-
+//ENDS ABOVE//
 
     alert("Order marked as delivered");
     loadSellerOrders();
@@ -3330,14 +3373,14 @@ if (submitReviewBtn) {
         loadNotifications();
 
       }*/
-      /* Run Notifications Page */
+      /* Run Notifications Page july 22 */
 
       if (
           window.location.pathname.includes("seller-notifications.html") ||
           window.location.pathname.includes("buyer-notifications.html")
       ) {
 
-        loadNotifications();
+          loadNotifications();
 
       }
 

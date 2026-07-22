@@ -1534,7 +1534,7 @@ if (checkoutBtn) {
         createdAt: serverTimestamp()
 
       });*/
-      await addDoc(collection(db, "orders"), {
+    const orderRef = await addDoc(collection(db, "orders"), {
 
         productId: cartItem.productId,
 
@@ -1554,7 +1554,7 @@ if (checkoutBtn) {
 
         createdAt: serverTimestamp()
 
-      });
+    });
 
     // =========================
     // CREATE SELLER NOTIFICATION
@@ -1993,23 +1993,29 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
             user.email;
 
         // Save message
-        await addDoc(collection(db, "messages"), {
+      await addDoc(collection(db, "messages"), {
 
-            conversationId,
-            productId,
+          conversationId,
+          productId,
 
-            senderId: user.uid,
-            senderName: senderName,
+          senderId: user.uid,
+          senderName: senderName,
 
-            receiverId: otherUserId,
+          receiverId: otherUserId,
 
-            text,
+          text,
 
-            createdAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
 
-            deletedBy: []
+          sent: true,
 
-        });
+          delivered: false,
+
+          isRead: false,
+
+          deletedBy: []
+
+      });
 
       // ===============================
       // CREATE MESSAGE NOTIFICATION
@@ -2690,6 +2696,7 @@ async function loadReviews(productId) {
 
     const review = docSnap.data();
 
+  
     const stars =
       "★".repeat(review.rating) +
       "☆".repeat(5 - review.rating);
@@ -2744,6 +2751,17 @@ if (submitReviewBtn) {
     const userData =
       userDoc.data();
 
+      // Get product
+      const productSnap = await getDoc(
+          doc(db, "products", productId)
+      );
+
+      if (!productSnap.exists()) {
+          alert("Product not found.");
+          return;
+      }
+
+
   const product = productSnap.data();
 
     await addDoc(
@@ -2778,11 +2796,11 @@ if (submitReviewBtn) {
 
 }*/
 
-        // ===============================
-        // CREATE REVIEW NOTIFICATION
-        // ===============================
+    // ===============================
+    // CREATE NOTIFICATION FOR SELLER
+    // ===============================
 
-    console.log("sendMessage() is running");
+    /*console.log("Creating review notification...");
 
     const productSnap = await getDoc(
       doc(db, "products", productId)
@@ -2790,99 +2808,102 @@ if (submitReviewBtn) {
 
     if (productSnap.exists()) {
 
-      const product = productSnap.data();
+      const product = productSnap.data();*/
 
-    await addDoc(collection(db, "notifications"), {
+      try {
+        await addDoc(collection(db, "notifications"), {
 
-        userId: product.sellerId,
+            userId: product.sellerId,
 
-        type: "review",
+            type: "review",
 
-        title: "New Review",
+            title: "New Review",
 
-        message: `${product.name} received a new review.`,
+            message: `${product.name} received a new review.`,
 
-        link: `reviews.html?productId=${productId}`,
+            link: `seller-reviews.html?productId=${productId}`,
 
-        read: false,
+            read: false,
 
-        createdAt: serverTimestamp()
+            createdAt: serverTimestamp()
 
-    });
+        });
 
-    console.log("Notification saved successfully.");
-        } catch (error) {
+        console.log("Notification saved successfully.");
+            } catch (error) {
 
-        console.error("Failed to create review notification:", error);
+            console.error("Failed to create review notification:", error);
+
+        }
+
+        alert("Review submitted!");
+
+        window.location.href = "order.html";
+
+      });
 
     }
-    }
 
-    alert("Review submitted!");
+ 
 
-    window.location.href = "order.html";
+      //Submit function//
+      window.toggleReview = function(productId) {
 
-  });
+        const reviewDiv =
+          document.getElementById(`review-${productId}`);
 
-}
-//Submit function//
-window.toggleReview = function(productId) {
+        if (!reviewDiv) return;
 
-  const reviewDiv =
-    document.getElementById(`review-${productId}`);
+        if (reviewDiv.style.display === "none") {
 
-  if (!reviewDiv) return;
+          reviewDiv.style.display = "block";
 
-  if (reviewDiv.style.display === "none") {
+        } else {
 
-    reviewDiv.style.display = "block";
+          reviewDiv.style.display = "none";
 
-  } else {
+        }
+      };
 
-    reviewDiv.style.display = "none";
+      //Getting the Average of Product Rating//
+      async function loadAverageRating(productId) {
 
-  }
-};
+        const reviewsQuery = query(
+          collection(db, "reviews"),
+          where("productId", "==", productId)
+        );
 
-//Getting the Average of Product Rating//
-async function loadAverageRating(productId) {
+        const snapshot = await getDocs(reviewsQuery);
 
-  const reviewsQuery = query(
-    collection(db, "reviews"),
-    where("productId", "==", productId)
-  );
+        const ratingElement =
+          document.getElementById("averageRating");
 
-  const snapshot = await getDocs(reviewsQuery);
+        if (!ratingElement) return;
 
-  const ratingElement =
-    document.getElementById("averageRating");
+        if (snapshot.empty) {
 
-  if (!ratingElement) return;
+          ratingElement.innerHTML =
+            "☆☆☆☆☆ No Reviews Yet";
 
-  if (snapshot.empty) {
+          return;
+        }
 
-    ratingElement.innerHTML =
-      "☆☆☆☆☆ No Reviews Yet";
+        let totalRating = 0;
 
-    return;
-  }
+        snapshot.forEach((docSnap) => {
+          totalRating += docSnap.data().rating;
+        });
 
-  let totalRating = 0;
+        const average =
+          (totalRating / snapshot.size).toFixed(1);
 
-  snapshot.forEach((docSnap) => {
-    totalRating += docSnap.data().rating;
-  });
+        const stars =
+          "★".repeat(Math.round(average)) +
+          "☆".repeat(5 - Math.round(average));
 
-  const average =
-    (totalRating / snapshot.size).toFixed(1);
-
-  const stars =
-    "★".repeat(Math.round(average)) +
-    "☆".repeat(5 - Math.round(average));
-
-  ratingElement.innerHTML =
-    `${stars} ${average} (${snapshot.size} Reviews)`;
-}
+        ratingElement.innerHTML =
+          `${stars} ${average} (${snapshot.size} Reviews)`;
+      }
 
 /* ================= SELLER NOTIFICATIONS ================= */
 
@@ -3036,9 +3057,9 @@ async function loadAverageRating(productId) {
                   }
 
                   // Mark notification as read
-                  document.querySelectorAll(".notification-card").forEach(card => {
+           document.querySelectorAll(".notification-card").forEach(card => {
 
-            card.addEventListener("click", async () => {
+              card.addEventListener("click", async () => {
 
                 await updateDoc(
                     doc(db, "notifications", card.dataset.id),
@@ -3130,7 +3151,10 @@ async function loadAverageRating(productId) {
             return;
         }
 
-        let foundReviews = false;
+          let foundReviews = false;
+
+          let totalRating = 0;
+          let totalReviews = 0;
 
             for (const productDoc of productsSnapshot.docs) {
 
@@ -3152,26 +3176,61 @@ async function loadAverageRating(productId) {
                 const review =
                     reviewDoc.data();
 
+                totalRating += review.rating;
+                totalReviews++;
+
                 const stars =
                     "★".repeat(review.rating) +
                     "☆".repeat(5 - review.rating);
 
-                container.innerHTML += `
-                    <div class="review-card">
+                const reviewDate =
+                  review.createdAt
+                      ? review.createdAt.toDate().toLocaleDateString()
+                      : "";
 
-                        <h3>${product.name}</h3>
+      const productImage =
+        product.images?.length
+            ? product.images[0]
+            : product.imageURL;
 
-                        <p><strong>${stars}</strong></p>
+        container.innerHTML += `
+            <div class="review-card" style="
+                border:1px solid #ddd;
+                border-radius:10px;
+                padding:15px;
+                margin-bottom:20px;
+                background:#fff;
+            ">
 
-                        <p>${review.comment}</p>
+               <img
+                src="${productImage}"
+                class="product-img"
+                width="120"
+            >
 
-                        <small>
-                            By ${review.buyerName}
-                        </small>
 
-                        <hr>
+                <h3>${product.name}</h3>
 
-                    </div>
+                <p style="font-size:20px;color:gold;">
+                    ${stars}
+                </p>
+
+                <p>
+                    ${review.comment}
+                </p>
+
+                <small style="color:#666;">
+                    <strong>By:</strong> ${review.buyerName || "Anonymous"}
+                </small>
+
+                <br>
+
+              <small style="color:gray;">
+                  ${reviewDate}
+              </small>
+
+            </div>
+
                 `;
             });
 
@@ -3183,8 +3242,18 @@ async function loadAverageRating(productId) {
 
         }
 
-    }
+          if (totalReviews > 0) {
 
+          const averageRating =
+              (totalRating / totalReviews).toFixed(1);
+
+          document.getElementById("reviewSummary").innerHTML = `
+              <h2>⭐ ${averageRating} / 5</h2>
+              <p>${totalReviews} Customer Reviews</p>
+          `;
+      }
+
+    }
 
 
       /* Run only on Seller Dashboard */
@@ -3193,3 +3262,20 @@ async function loadAverageRating(productId) {
         loadNotifications();
 
       }
+
+      //load seller review//
+      if (
+    window.location.pathname.includes("seller-reviews.html")
+) {
+
+    onAuthStateChanged(auth, (user) => {
+
+        if (user) {
+
+            loadSellerReviews();
+
+        }
+
+    });
+
+}

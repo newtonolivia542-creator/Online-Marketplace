@@ -56,6 +56,7 @@ if (registerForm) {
 
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(userCred.user);
       await setDoc(doc(db, "users", userCred.user.uid), {
         fullName,
         email,
@@ -88,6 +89,19 @@ if (loginForm) {
 
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
+
+      await userCred.user.reload();
+      if (!userCred.user.emailVerified) {
+
+        alert(
+          "Your email address has not been verified.\n\nPlease check your inbox and click the verification link before logging in."
+      );
+    
+        await signOut(auth);
+    
+        return;
+    }
+    
       const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
 
       if (userDoc.exists() && userDoc.data().status === "banned") {
@@ -182,6 +196,7 @@ onAuthStateChanged(auth, async (user) => {
       loadMyOrders();
       loadCart();
       loadBuyerMessages();
+      loadNotificationBadge();
     }
 
     if (role === "seller") {
@@ -198,6 +213,8 @@ onAuthStateChanged(auth, async (user) => {
       loadSoldProducts();
       loadSellerMessages();
       loadStoreProfile();
+      //loadNotifications();
+      loadNotificationBadge();
     }
 
   } else {
@@ -512,16 +529,6 @@ function displayProducts(products) {
       <h3>${product.name}</h3>
       <p class="price">$${product.price}</p>
       <p class="desc">${product.description}</p>
-
-      <button class="buyBtn"
-        data-id="${product.id}"
-        data-seller="${product.sellerId}">
-        Buy
-      </button>
-
-      <button class="addCartBtn" data-id="${product.id}">
-        Add to Cart
-      </button>
     `;
 
     //  CLICK IMAGE INSTEAD OF BUTTON //
@@ -532,11 +539,34 @@ function displayProducts(products) {
     productList.appendChild(card);
   });
 
-  setupBuyButtons();
-  setupAddCartButtons();
+  /*setupBuyButtons();
+  <button class="buyBtn"
+  data-id="${product.id}"
+  data-seller="${product.sellerId}">
+  Buy
+</button>
+
+<button class="addCartBtn" data-id="${product.id}">
+  Add to Cart
+</button>
+  //setupAddCartButtons();*/
+  
 }
 
-const searchBtn = document.getElementById("searchBtn");
+//========== AI SEARCH FUNCTION ==========//
+const aiSearchBtn = document.getElementById("aiSearchBtn");
+
+if (aiSearchBtn) {
+
+  aiSearchBtn.addEventListener("click", () => {
+
+    console.log("AI Search clicked!");
+
+  });
+
+}
+
+/*const searchBtn = document.getElementById("searchBtn");
 if (searchBtn) {
   searchBtn.addEventListener("click", () => {
     const term = document.getElementById("searchInput").value.toLowerCase();
@@ -602,7 +632,8 @@ function setupBuyButtons() {
 
   });
 
-}
+}*/
+
 /* =============setupAddCartButtons ==========*/
 
 function setupAddCartButtons() {
@@ -658,44 +689,158 @@ if(payBtn){
       );
 
       if(result.error){
+              createdAt: serverTimestamp()
+          });
+          
+          // Get product information
+          const productSnap = await getDoc(
+              doc(db, "products", selectedProduct.id)
+          );
+          
+          const product = productSnap.data();
+          
+          // Notify seller
+          await addDoc(collection(db, "notifications"), {
+              userId: product.sellerId,
+              type: "new_order",
+              title: "New Order Received",
+              message: `${product.name} was purchased.`,
+              link: `seller-orders.html?orderId=${orderRef.id}`,
+              read: false,
+              createdAt: serverTimestamp()
+          });
 
-        document.getElementById("payment-message").textContent =
-          result.error.message;
+        // Notify buyer
+        await addDoc(collection(db, "notifications"), {
 
-        payBtn.disabled = false;
-        payBtn.textContent = "Pay Now";
+          userId: auth.currentUser.uid,
 
-      } else {
+          type: "order_placed",
 
-        if(result.paymentIntent.status === "succeeded"){
+          title: "Order Confirmed",
 
-          await addDoc(collection(db, "orders"), {
+          message: `Your order for "${product.name}" has been placed successfully.`,
 
-            productId: selectedProduct.id,
-            sellerId: selectedProduct.sellerId,
-            userId: auth.currentUser.uid,
-            status: "paid",
-            createdAt: new Date()
+          link: `order.html?orderId=${orderRef.id}`,
+
+          read: false,
+
+          createdAt: serverTimestamp()
+
+        });
+
+
+      // Calculate remaining stock FIRST
+      const productRef = doc(db, "products", selectedProduct.id);
+
+      const newQuantity =
+          (product.quantity || 0) - selectedProduct.quantity;
+
+      // Update product inventory
+      await updateDoc(productRef, {
+          quantity: newQuantity,
+          sold: newQuantity <= 0
+      });
+
+      // Notify seller if inventory is getting low
+      if (newQuantity <= 5 && newQuantity > 0) {
+
+          await addDoc(collection(db, "notifications"), {
+
+              userId: product.sellerId,
+
+              type: "low_stock",
+
+              title: "Low Inventory",
+
+              message: `Only ${newQuantity} ${product.name} left in stock.`,
+
+              link: `seller-dashboard.html?productId=${selectedProduct.id}`,
+
+              read: false,
+
+              createdAt: serverTimestamp()
+          });
+          
+          // Get product information
+          const productSnap = await getDoc(
+              doc(db, "products", selectedProduct.id)
+          );
+          
+          const product = productSnap.data();
+          
+          // Notify seller
+          await addDoc(collection(db, "notifications"), {
+              userId: product.sellerId,
+              type: "new_order",
+              title: "New Order Received",
+              message: `${product.name} was purchased.`,
+              link: `seller-orders.html?orderId=${orderRef.id}`,
+              read: false,
+              createdAt: serverTimestamp()
+          });
+
+        // Notify buyer
+        await addDoc(collection(db, "notifications"), {
+
+          userId: auth.currentUser.uid,
+
+          type: "order_placed",
+
+          title: "Order Confirmed",
+
+          message: `Your order for "${product.name}" has been placed successfully.`,
+
+          link: `order.html?orderId=${orderRef.id}`,
+
+          read: false,
+
+          createdAt: serverTimestamp()
+
+        });
+
+
+      // Calculate remaining stock FIRST
+      const productRef = doc(db, "products", selectedProduct.id);
+
+      const newQuantity =
+          (product.quantity || 0) - selectedProduct.quantity;
+
+      // Update product inventory
+      await updateDoc(productRef, {
+          quantity: newQuantity,
+          sold: newQuantity <= 0
+      });
+
+      // Notify seller if inventory is getting low
+      if (newQuantity <= 5 && newQuantity > 0) {
+
+          await addDoc(collection(db, "notifications"), {
+
+              userId: product.sellerId,
+
+              type: "low_stock",
+
+              title: "Low Inventory",
+
+              message: `Only ${newQuantity} ${product.name} left in stock.`,
+
+              link: `seller-dashboard.html?productId=${selectedProduct.id}`,
+
+              read: false,
+
+              createdAt: serverTimestamp()
 
           });
 
-          await updateDoc(
-            doc(db, "products", selectedProduct.id),
-            {
-              sold: true
-            }
-          );
+      }
 
-          document.getElementById("payment-message").textContent =
-            "Payment Successful!";
+      document.getElementById("payment-message").textContent =
+          "Payment Successful!";
 
-          document.getElementById("checkoutModal").style.display = "none";
+      document.getElementById("checkoutModal").style.display = "none";
 
-          loadProducts();
-
-          if(typeof loadMyOrders === "function"){
-            loadMyOrders();
-          }
+      window.location.href = `order.html?orderId=${orderRef.id}`;
 
         }
 
@@ -1337,6 +1482,69 @@ if (addToCartBtn) {
 
     });
 }
+//july 24, 2026//
+const buyBtn = document.getElementById("buyBtn");
+
+if (buyBtn) {
+
+    buyBtn.addEventListener("click", async () => {
+
+        console.log("Buy button clicked");
+
+        const productSnap = await getDoc(
+            doc(db, "products", productId)
+        );
+
+        if (!productSnap.exists()) {
+            console.log("Product not found");
+            return;
+        }
+
+        const product = productSnap.data();
+
+        console.log(product);
+
+        if (
+            product.colors &&
+            product.colors.length > 0 &&
+            !selectedColor
+        ) {
+            alert("Please select a color.");
+            return;
+        }
+
+        if (
+            product.sizes &&
+            product.sizes.length > 0 &&
+            !selectedSize
+        ) {
+            alert("Please select a size.");
+            return;
+        }
+
+        const quantity = Number(
+            document.getElementById("detailQuantity").value
+        );
+
+        selectedProduct = {
+            id: productId,
+            sellerId: product.sellerId,
+            quantity,
+            color: selectedColor,
+            size: selectedSize
+        };
+
+        console.log(selectedProduct);
+
+        const modal = document.getElementById("checkoutModal");
+        console.log(modal);
+
+        modal.style.display = "block";
+
+    });
+
+}
+
 
 // LOAD PRODUCT
 loadProduct();
@@ -1582,7 +1790,7 @@ if (checkoutBtn) {
 
         price: product.price,
 
-        status: "pending",
+        status: "paid",
 
         createdAt: serverTimestamp()
 
@@ -1670,15 +1878,50 @@ if (checkoutBtn) {
 
     loadCart();
 
-    if (typeof loadProducts === "function") {
-      loadProducts();
-    }
+//=================loadNotificationBadge function July 22 =================//
 
-    if (typeof loadMyOrders === "function") {
-      loadMyOrders();
-    }
+function loadNotificationBadge() {
 
-  });
+    const badge =
+        document.getElementById("notificationBadge");
+
+    if (!badge) return;
+
+    onAuthStateChanged(auth, (user) => {
+
+        if (!user) return;
+
+        const q = query(
+            collection(db, "notifications"),
+            where("userId", "==", user.uid)
+        );
+
+        onSnapshot(q, (snapshot) => {
+
+            let unread = 0;
+
+            snapshot.forEach(docSnap => {
+
+                if (!docSnap.data().read) {
+                    unread++;
+                }
+
+            });
+
+            if (unread > 0) {
+
+                badge.style.display = "flex";
+                badge.innerText = unread;
+
+            } else {
+
+                badge.style.display = "none";
+
+            }
+
+        });
+
+    });
 
 }
 
@@ -3062,6 +3305,7 @@ if (submitReviewBtn) {
                     console.log(snapshot.size);
 
                       const notification = docSnap.data();
+                      console.log("Notification:", notification);
 
                       if (!notification.read) {
                           unreadCount++;

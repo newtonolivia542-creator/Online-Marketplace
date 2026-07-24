@@ -40,6 +40,11 @@ const logger = require("firebase-functions/logger");
 
 const Stripe = require("stripe");
 const OpenAI = require("openai").default;
+const admin = require("firebase-admin");
+
+admin.initializeApp();
+
+const db = admin.firestore();
 
 exports.createPaymentIntent = onRequest(
   {
@@ -141,5 +146,35 @@ Requirements:
       });
 
     }
+  }
+);
+
+   //AI SEARCH FUNCTION//
+exports.aiSearchProducts = onRequest(
+  {
+    secrets: ["OPENAI_API_KEY"],
+    cors: true,
+  },
+
+  async (req, res) => {
+
+    try {
+
+      const client = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+
+      // We will continue here...
+
+    } catch (error) {
+
+      logger.error(error);
+
+      res.status(500).send({
+        error: error.message
+      });
+
+    }
+
   }
 );

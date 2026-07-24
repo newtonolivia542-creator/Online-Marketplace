@@ -267,8 +267,16 @@ h1 {
 .slider {
   position: relative;
   text-align: center;
-  margin-bottom: 20px;
-}
+  margin-bottom: 1;
+}*/
+  .slider{
+    position: relative;
+  }
+
+  .slider-btn{
+    position: absolute;
+    z-index: 5;
+  }
 
 #detailImage {
   width: 30%;
@@ -641,4 +649,38 @@ button[onclick]:hover {
     max-height: 120px;
   }
 
+}
+
+.notification-btn{
+    position:relative;
+    display:inline-block;
+}
+
+.notification-badge{
+
+    position:absolute;
+
+    top:-8px;
+
+    right:-8px;
+
+    background:red;
+
+    color:white;
+
+    width:22px;
+
+    height:22px;
+
+    border-radius:50%;
+
+    display:flex;
+
+    align-items:center;
+
+    justify-content:center;
+
+    font-size:12px;
+
+    font-weight:bold;
 }

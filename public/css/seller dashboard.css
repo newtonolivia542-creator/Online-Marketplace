@@ -342,3 +342,98 @@ button:nth-of-type(2) {
     margin-bottom:25px;
     text-align:center;
 }
+
+.notification-btn{
+    position:relative;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+}
+
+.notification-badge{
+    background:red;
+    color:white;
+    border-radius:50%;
+    min-width:20px;
+    height:20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    font-weight:bold;
+    padding:2px;
+}*/
+
+.notification-wrapper{
+  position:relative;
+  display:inline-block;
+}
+
+.notification-btn{
+  position:relative;
+  display:inline-block;
+  background:hwb(188 17% 11%);
+  color:white;
+  padding:10px 18px;
+  border-radius:8px;
+  text-decoration:none;
+  font-weight:bold;
+}
+
+.notification-badge{
+
+  position:absolute;
+
+  top:-8px;
+  right:-8px;
+
+  width:22px;
+  height:22px;
+
+  border-radius:50%;
+
+  background:#ff3b30;
+  color:white;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  font-size:12px;
+  font-weight:bold;
+
+  border:2px solid white;
+
+  box-shadow:0 2px 6px rgba(0,0,0,.25);
+
+  display:none;
+}
+
+.profile-container{
+  max-width:700px;
+  margin:40px auto;
+  background:#fff;
+  padding:30px;
+  border-radius:12px;
+  box-shadow:0 4px 15px rgba(0,0,0,.1);
+}
+.profile-container input,
+.profile-container textarea{
+    width:100%;
+    padding:12px;
+    margin-top:8px;
+    margin-bottom:18px;
+    border:1px solid #ddd;
+    border-radius:8px;
+    font-size:15px;
+    box-sizing:border-box;
+}
+label{
+  display:block;
+  margin-bottom:6px;
+  font-weight:600;
+}
+
+.profile-container h2{
+  margin-bottom:25px;
+}

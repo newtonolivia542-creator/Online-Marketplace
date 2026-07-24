@@ -13,12 +13,27 @@
 </head>
 <body>
   <header>
+ <nav class="navbar">
+    <div class="logo">
+        <img src="css/images/lesovia-logo.png" alt="Lesovia Logo">
+        <span>Lesovia</span>
+    </div>
+</nav>
     <h2 id="welcome"></h2>
     <button id="logoutBtn">Logout</button>
   </header>
 
-  <input type="text" id="searchInput" placeholder="Search products..." />
-<button id="searchBtn">Search</button>
+  <!--<input type="text" id="searchInput" placeholder="Search products..." />
+<button id="searchBtn">Search</button> -->
+
+  <input
+      id="aiSearchInput"
+      placeholder="Ask AI... (Example: I need a laptop under $700 for programming)"
+  >
+
+  <button id="aiSearchBtn">
+      ✨ AI Search
+  </button>
 <br><br>
 
 <button onclick="window.location.href='order.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">My Orders</button>
@@ -27,11 +42,29 @@
     <button onclick="window.location.href='messages.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">
       View Messages
     </button>
-    <a href="buyer-notifications.html" class="notification-link">
-          🔔
-        <span id="notificationBadge" class="notification-badge"></span>
+    
+    <a
+        href="seller-notifications.html"
+        style="
+            background:#1E88E5;
+            color:white;
+            padding:10px 16px;
+            border-radius:8px;
+            text-decoration:none;
+        "
+    >
 
-      </a>
+    🔔 Notifications
+
+        <span
+            id="notificationBadge"
+            class="notification-badge"
+            style="display:none;"
+        >
+            0
+        </span>
+    </a>
+
 
 <h2>Browse Products</h2>
 

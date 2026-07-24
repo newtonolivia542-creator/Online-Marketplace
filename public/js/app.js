@@ -8,6 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import {
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut
@@ -65,13 +66,21 @@ if (registerForm) {
         lastLogin: new Date(),  // first login = signup
         status: "active"
       });
-      if (role === "seller") {
+
+      await signOut(auth);
+
+      alert(
+          "Your account has been created successfully!\n\nPlease check your email and verify your account before logging in."
+      );
+
+      window.location.href = "login.html";
+      /*if (role === "seller") {
         window.location.href = "seller dashboard.html";
       } else if (role === "buyer") {
         window.location.href = "buyer dashboard.html";
       } else if (role === "admin") {
         window.location.href = "admin.html";
-      }
+      }*/
 
     } catch (err) {
       alert(err.message);
@@ -101,7 +110,7 @@ if (loginForm) {
     
         return;
     }
-    
+
       const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
 
       if (userDoc.exists() && userDoc.data().status === "banned") {
@@ -550,23 +559,51 @@ function displayProducts(products) {
   Add to Cart
 </button>
   //setupAddCartButtons();*/
-  
+
 }
 
 //========== AI SEARCH FUNCTION ==========//
-const aiSearchBtn = document.getElementById("aiSearchBtn");
+  const aiSearchBtn = document.getElementById("aiSearchBtn");
 
-if (aiSearchBtn) {
+  if (aiSearchBtn) {
 
-  aiSearchBtn.addEventListener("click", () => {
+    aiSearchBtn.addEventListener("click", async () => {
 
-    console.log("AI Search clicked!");
+      const search =
+        document.getElementById("aiSearchInput").value;
 
-  });
+      try {
 
-}
+        const response = await fetch(
+          "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/aiSearchProducts",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              search
+            })
+          }
+        );
 
-/*const searchBtn = document.getElementById("searchBtn");
+        const data = await response.json();
+
+    console.log("Products:", data.products);
+
+    displayProducts(data.products);
+
+      } catch (err) {
+
+        console.error(err);
+
+      }
+
+    });
+
+  }
+
+const searchBtn = document.getElementById("searchBtn");
 if (searchBtn) {
   searchBtn.addEventListener("click", () => {
     const term = document.getElementById("searchInput").value.toLowerCase();
@@ -577,7 +614,7 @@ if (searchBtn) {
 
     displayProducts(filtered);
   });
-}
+} 
 
 /* ================= BUY PRODUCT ================= 
 function setupBuyButtons() {
@@ -613,7 +650,7 @@ function setupBuyButtons() {
 
 /* ================= BUY PRODUCT ================= */
 
-function setupBuyButtons() {
+/*function setupBuyButtons() {
 
   const buyButtons = document.querySelectorAll(".buyBtn");
 
@@ -636,7 +673,7 @@ function setupBuyButtons() {
 
 /* =============setupAddCartButtons ==========*/
 
-function setupAddCartButtons() {
+/*function setupAddCartButtons() {
   const addCartButtons = document.querySelectorAll(".addCartBtn");
 
   addCartButtons.forEach(btn => {
@@ -658,7 +695,7 @@ function setupAddCartButtons() {
       }
     });
   });
-}
+}*/
 
 /* ================= STRIPE PAYMENT ================= */
 
@@ -689,76 +726,26 @@ if(payBtn){
       );
 
       if(result.error){
-              createdAt: serverTimestamp()
-          });
-          
-          // Get product information
-          const productSnap = await getDoc(
-              doc(db, "products", selectedProduct.id)
-          );
-          
-          const product = productSnap.data();
-          
-          // Notify seller
-          await addDoc(collection(db, "notifications"), {
-              userId: product.sellerId,
-              type: "new_order",
-              title: "New Order Received",
-              message: `${product.name} was purchased.`,
-              link: `seller-orders.html?orderId=${orderRef.id}`,
-              read: false,
-              createdAt: serverTimestamp()
-          });
 
-        // Notify buyer
-        await addDoc(collection(db, "notifications"), {
+        document.getElementById("payment-message").textContent =
+          result.error.message;
 
-          userId: auth.currentUser.uid,
+        payBtn.disabled = false;
+        payBtn.textContent = "Pay Now";
 
-          type: "order_placed",
+      } else {
 
-          title: "Order Confirmed",
+        if(result.paymentIntent.status === "succeeded"){
 
-          message: `Your order for "${product.name}" has been placed successfully.`,
-
-          link: `order.html?orderId=${orderRef.id}`,
-
-          read: false,
-
-          createdAt: serverTimestamp()
-
-        });
-
-
-      // Calculate remaining stock FIRST
-      const productRef = doc(db, "products", selectedProduct.id);
-
-      const newQuantity =
-          (product.quantity || 0) - selectedProduct.quantity;
-
-      // Update product inventory
-      await updateDoc(productRef, {
-          quantity: newQuantity,
-          sold: newQuantity <= 0
-      });
-
-      // Notify seller if inventory is getting low
-      if (newQuantity <= 5 && newQuantity > 0) {
-
-          await addDoc(collection(db, "notifications"), {
-
-              userId: product.sellerId,
-
-              type: "low_stock",
-
-              title: "Low Inventory",
-
-              message: `Only ${newQuantity} ${product.name} left in stock.`,
-
-              link: `seller-dashboard.html?productId=${selectedProduct.id}`,
-
-              read: false,
-
+          //await addDoc(collection(db, "orders"), {
+            const orderRef = await addDoc(collection(db, "orders"), {
+              productId: selectedProduct.id,
+              sellerId: selectedProduct.sellerId,
+              userId: auth.currentUser.uid,
+              quantity: selectedProduct.quantity,
+              color: selectedProduct.color || null,
+              size: selectedProduct.size || null,
+              status: "paid",
               createdAt: serverTimestamp()
           });
           
@@ -1878,7 +1865,20 @@ if (checkoutBtn) {
 
     loadCart();
 
-//=================loadNotificationBadge function July 22 =================//
+
+    if (typeof loadProducts === "function") {
+      loadProducts();
+    }
+
+    if (typeof loadMyOrders === "function") {
+      loadMyOrders();
+    }
+
+  });
+
+}
+
+ //=================loadNotificationBadge function July 22 =================//
 
 function loadNotificationBadge() {
 
@@ -3338,6 +3338,10 @@ if (submitReviewBtn) {
 
                           case "low_stock":
                               icon = "⚠️";
+                              break;
+                            
+                          case "order_placed":
+                              icon = "✅";
                               break;
 
                       }

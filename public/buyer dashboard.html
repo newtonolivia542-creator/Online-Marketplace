@@ -2,29 +2,37 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="description" content="Buy affordable electronics, fashion, and more on Marketly. Trusted multi-vendor marketplace.">
+  <meta name="description" content="Buy affordable electronics, fashion, and more on Lesovia. Trusted multi-vendor marketplace.">
   <!--title>Buyer Dashboard</title -->
-  <title>Buy Cheap Electronics | Solix</title>
+  <title>Lesovia Buyer Dashboard</title>
 
-  <meta name="description" content="Buy Cheap Electronics securely on Solix marketplace.">
+  <meta name="description" content="Buy Cheap Electronics">
+  <meta name="description" content="USA newly secure AI Power Commerce">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="../css/footer.css">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap" rel="stylesheet">
 </head>
 <body>
   <header>
  <nav class="navbar">
+    <!--div class="logo">
+      <img src="images/Lesovia-logo.png" alt="Lesovia Logo">        
+      <span>Lesovia</span>
+    </div-->
     <div class="logo">
-        <img src="css/images/lesovia-logo.png" alt="Lesovia Logo">
-        <span>Lesovia</span>
-    </div>
+      <a href="index.html" class="logo-text">Lesovia</a>
+  </div>
 </nav>
     <h2 id="welcome"></h2>
     <button id="logoutBtn">Logout</button>
   </header>
 
-  <!--<input type="text" id="searchInput" placeholder="Search products..." />
-<button id="searchBtn">Search</button> -->
+  <input type="text" id="searchInput" placeholder="Search products..." />
+<button id="searchBtn">Search</button>
 
   <input
       id="aiSearchInput"
@@ -42,19 +50,12 @@
     <button onclick="window.location.href='messages.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">
       View Messages
     </button>
-    
-    <a
-        href="seller-notifications.html"
-        style="
-            background:#1E88E5;
-            color:white;
-            padding:10px 16px;
-            border-radius:8px;
-            text-decoration:none;
-        "
-    >
 
-    🔔 Notifications
+    <a
+        href="buyer-notifications.html"
+        class="notification-btn" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;"
+    >
+        🔔 Notifications
 
         <span
             id="notificationBadge"
@@ -78,7 +79,7 @@
   <option value="plants">Plants</option>
 </select>
   
-<div id="productList"></div>
+<!--div id="productList"></div> -->
 
 <div id="imageGallery"></div>
 
@@ -101,7 +102,7 @@
         <label for="detailQuantity">Quantity:</label>
         <input type="number" id="detailQuantity" value="1" min="1" style="width:60px; margin-bottom:15px;">
 
-        <button id="addToCartBtn">Add to Cart</button>
+        <!--button id="addToCartBtn">Add to Cart</button-->
       </div>
     </div>
 <!--PAYMENT FUNCTION-->

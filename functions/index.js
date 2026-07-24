@@ -164,7 +164,103 @@ exports.aiSearchProducts = onRequest(
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      // We will continue here...
+     const { search } = req.body;
+
+    if (!search) {
+      return res.status(400).send({
+        error: "Search text is required."
+      });
+    }
+
+    logger.info("AI Search:", search);
+
+    const response = await client.responses.create({
+      model: "gpt-5.5",
+      input: `
+    You are an AI shopping assistant for Lesovia.
+
+    A customer entered the following search:
+
+    "${search}"
+
+    Extract the customer's shopping intent.
+
+    Return ONLY valid JSON.
+
+    Use this format:
+
+    {
+      "name": "",
+      "category": "",
+      "brand": "",
+      "colors": [],
+      "condition": "",
+      "minPrice": null,
+      "maxPrice": null,
+      "keywords": []
+    }
+
+    Do not include explanations.
+    Do not include markdown.
+    Do not include anything except JSON.
+    `
+    });
+
+    logger.info(response.output_text);
+
+    //res.send({
+     // filters: response.output_text
+   //});
+
+    const filters = JSON.parse(response.output_text);
+//temporary replacing//
+   // let query = db.collection("products");
+    //const snapshot = await db.collection("products").get();
+    const snapshot = await db.collection("products")
+      .where("category", "==", "fashion")
+      .get();
+        logger.info("Number of products:", snapshot.size);
+
+    const products = [];
+
+    snapshot.forEach((doc) => {
+      products.push({
+        id: doc.id,
+        ...doc.data(),
+      });
+    });
+
+    logger.info(products);
+
+    res.send({
+      products
+    })
+
+    // Filter by category
+    /*if (filters.category) {
+      query = query.where("category", "==", filters.category.toLowerCase());
+    }
+
+    // Filter by maximum price
+    if (filters.maxPrice !== null) {
+      query = query.where("price", "<=", filters.maxPrice);
+    }
+
+    const snapshot = await query.get();
+
+    const products = [];
+
+    snapshot.forEach((doc) => {
+      products.push({
+        id: doc.id,
+        ...doc.data(),
+      });
+    });
+
+    res.send({
+      filters,
+      products,
+    });*/
 
     } catch (error) {
 

@@ -1,3 +1,6 @@
+//temporary//
+console.log("app.js loaded!");
+
 import { sendPasswordResetEmail } from
 "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -70,7 +73,7 @@ if (registerForm) {
       await signOut(auth);
 
       alert(
-          "Your account has been created successfully!\n\nPlease check your email and verify your account before logging in."
+          "Your account has been created successfully!\n\nPlease check your email spam and verify your account before logging in."
       );
 
       window.location.href = "login.html";
@@ -103,7 +106,7 @@ if (loginForm) {
       if (!userCred.user.emailVerified) {
 
         alert(
-          "Your email address has not been verified.\n\nPlease check your inbox and click the verification link before logging in."
+          "Your email address has not been verified.\n\nPlease check your Gmail spam and click the verification link before logging in."
       );
     
         await signOut(auth);
@@ -237,6 +240,8 @@ onAuthStateChanged(auth, async (user) => {
     }
   }
 });
+
+
 
 /* ================= PRODUCT UPLOAD (SELLER) ================= */
 
@@ -3648,3 +3653,48 @@ if (submitReviewBtn) {
     });
 
 }
+
+//==========================================//
+//TEMPORARY FUNCTION FOR SENDING EMAIL//
+//==========================================//
+
+window.sendTestEmail = async function () {
+
+    try {
+
+        console.log("Button clicked");
+
+        const response = await fetch(
+            "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/sendVerificationEmail",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    email: "newtonolivia542@gmail.com"
+                })
+            }
+        );
+
+        console.log("Response:", response);
+
+        const result = await response.json();
+
+        console.log(result);
+
+        alert(result.message || result.error);
+
+    } catch (err) {
+
+        console.error(err);
+
+        alert(err.message);
+
+    }
+
+};
+
+document
+    .getElementById("sendTestEmailBtn")
+    .addEventListener("click", window.sendTestEmail);

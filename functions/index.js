@@ -41,6 +41,7 @@ const logger = require("firebase-functions/logger");
 const Stripe = require("stripe");
 const OpenAI = require("openai").default;
 const admin = require("firebase-admin");
+const { Resend } = require("resend");
 
 admin.initializeApp();
 
@@ -271,6 +272,24 @@ exports.aiSearchProducts = onRequest(
       });
 
     }
+
+  }
+);
+
+// ===========================
+// TEST EMAIL FUNCTION
+// ===========================
+
+exports.testEmailFunction = onRequest(
+  {
+    cors: true,
+  },
+  async (req, res) => {
+
+    res.send({
+      success: true,
+      message: "Lesovia Email Function is working!"
+    });
 
   }
 );

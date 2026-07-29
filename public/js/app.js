@@ -11,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 import {
   createUserWithEmailAndPassword,
-  sendEmailVerification,
+  //sendEmailVerification,
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut
@@ -60,7 +60,22 @@ if (registerForm) {
 
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      await sendEmailVerification(userCred.user);
+      //await fetch(
+      const response = await fetch(
+        "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/sendVerificationEmail",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: userCred.user.email,
+            uid: userCred.user.uid,
+            fullName: fullName,
+          }),
+        }
+      );
+      //await sendEmailVerification(userCred.user);
       await setDoc(doc(db, "users", userCred.user.uid), {
         fullName,
         email,
@@ -73,7 +88,7 @@ if (registerForm) {
       await signOut(auth);
 
       alert(
-          "Your account has been created successfully!\n\nPlease check your email spam and verify your account before logging in."
+      "Welcome to Lesovia!\n\nWe've sent a verification email to your inbox.\n\nPlease verify your email before logging in."
       );
 
       window.location.href = "login.html";
@@ -3658,7 +3673,7 @@ if (submitReviewBtn) {
 //TEMPORARY FUNCTION FOR SENDING EMAIL//
 //==========================================//
 
-window.sendTestEmail = async function () {
+/*window.sendTestEmail = async function () {
 
     try {
 
@@ -3697,4 +3712,4 @@ window.sendTestEmail = async function () {
 
 document
     .getElementById("sendTestEmailBtn")
-    .addEventListener("click", window.sendTestEmail);
+    .addEventListener("click", window.sendTestEmail);*/

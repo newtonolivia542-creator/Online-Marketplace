@@ -276,20 +276,122 @@ exports.aiSearchProducts = onRequest(
   }
 );
 
-// ===========================
-// TEST EMAIL FUNCTION
-// ===========================
+// =================================
+// REAL EMAIL VERIFICATION FUNCTION
+// =================================
 
-exports.testEmailFunction = onRequest(
-  {
-    cors: true,
-  },
-  async (req, res) => {
+  exports.sendVerificationEmail = onRequest(
+    {
+      secrets: ["RESEND_API_KEY", "APP_URL"],
+      cors: true,
+    },
 
-    res.send({
-      success: true,
-      message: "Lesovia Email Function is working!"
-    });
+    async (req, res) => {
 
-  }
-);
+      try {
+
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        const { email, uid, fullName } = req.body;
+
+        if (!email || !uid) {
+          return res.status(400).send({
+            error: "Missing email or uid."
+          });
+        }
+
+      const verificationLink =
+        await admin.auth().generateEmailVerificationLink(email, {
+          url: process.env.APP_URL,
+          handleCodeInApp: false,
+        });
+
+        const emailResult = await resend.emails.send({
+
+          from: "Lesovia <no-reply@lesovia.com>",
+
+          to: email,
+
+          subject: "Verify your Lesovia account",
+
+          html: `
+
+      <div style="font-family:Arial;padding:30px;max-width:600px;margin:auto;">
+
+      <h1>Welcome to Lesovia!</h1>
+
+      <p>Hello ${fullName || ""},</p>
+
+      <p>
+        Thank you for creating your Lesovia account.
+      </p>
+
+      <p>
+        Please verify your email address before logging in.
+      </p>
+
+      <p style="margin:40px 0;">
+
+      <a
+      href="${verificationLink}"
+      style="
+        background:#1a73e8;
+        color:white;
+        padding:15px 30px;
+        text-decoration:none;
+        border-radius:6px;
+        font-weight:bold;
+      ">
+        Verify My Email
+      </a>
+
+      </p>
+
+      <p>
+        If the button doesn't work, copy this link:
+      </p>
+
+      <p>
+
+      ${verificationLink}
+
+      </p>
+
+      <hr>
+
+      <p style="color:#777;">
+      © 2026 Lesovia
+      </p>
+
+      </div>
+
+          `,
+
+        });
+        logger.info("Resend response:", emailResult);
+
+        res.send({
+
+          success: true,
+
+          message: "Verification email sent."
+
+        });
+
+      }
+
+      catch (error) {
+
+        logger.error(error);
+
+        res.status(500).send({
+
+          error: error.message
+
+        });
+
+      }
+
+    }
+
+  );

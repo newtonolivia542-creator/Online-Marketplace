@@ -395,3 +395,98 @@ exports.aiSearchProducts = onRequest(
     }
 
   );
+
+
+  // ===========================
+// CUSTOM PASSWORD RESET EMAIL
+// ===========================
+
+exports.sendPasswordResetEmail = onRequest(
+  {
+    secrets: ["RESEND_API_KEY", "APP_URL"],
+    cors: true,
+  },
+  async (req, res) => {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).send({
+          error: "Email is required.",
+        });
+      }
+
+      const resetLink = await admin.auth().generatePasswordResetLink(email, {
+        url: process.env.APP_URL,
+      });
+
+      const emailResult = await resend.emails.send({
+        from: "Lesovia <no-reply@lesovia.com>",
+        to: email,
+        subject: "Reset your Lesovia password",
+
+        html: `
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:30px;">
+
+<h1 style="color:#0b7a3d;">Reset Your Password</h1>
+
+<p>Hello,</p>
+
+<p>
+We received a request to reset the password for your Lesovia account.
+</p>
+
+<p>
+If you requested this change, click the button below.
+</p>
+
+<p style="margin:40px 0;text-align:center;">
+
+<a
+href="${resetLink}"
+style="
+background:#0b7a3d;
+color:#ffffff;
+padding:15px 30px;
+text-decoration:none;
+border-radius:6px;
+font-weight:bold;
+display:inline-block;
+">
+Reset Password
+</a>
+
+</p>
+
+<p>
+If you didn't request a password reset, you can safely ignore this email.
+Your password will remain unchanged.
+</p>
+
+<hr>
+
+<p style="color:#777;">
+© 2026 Lesovia
+</p>
+
+</div>
+`,
+      });
+
+      logger.info("Password reset email:", emailResult);
+
+      res.send({
+        success: true,
+        message: "Password reset email sent.",
+      });
+    } catch (error) {
+      logger.error(error);
+
+      res.status(500).send({
+        error: error.message,
+      });
+    }
+  }
+);

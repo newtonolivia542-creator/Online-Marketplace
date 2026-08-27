@@ -1,8 +1,8 @@
 //temporary//
 console.log("app.js loaded!");
 
-import { sendPasswordResetEmail } from
-"https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+//import { sendPasswordResetEmail } from
+//"https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 import { auth, db } from "./firebase.js";
 import {
@@ -127,8 +127,46 @@ if (loginForm) {
         await signOut(auth);
     
         return;
-    }
+    }*/
+    await userCred.user.reload();
 
+    if (!userCred.user.emailVerified) {
+
+        // Automatically send another verification email
+        const response = await fetch(
+            "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/sendVerificationEmail",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    email: userCred.user.email,
+                    fullName: ""
+                }),
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || "Unable to send verification email.");
+        }
+
+        await signOut(auth);
+
+        alert(
+    `Your email address has not been verified.
+
+    We've automatically sent a new verification email to:
+
+    ${userCred.user.email}
+
+    Please check your inbox and click the verification link before logging in.`
+        );
+
+        return;
+    }
       const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
 
       if (userDoc.exists() && userDoc.data().status === "banned") {
@@ -524,49 +562,188 @@ async function loadProducts() {
   if (!productList) return;
 
   const snapshot = await getDocs(collection(db, "products"));
-  allProducts = [];
-  productList.innerHTML = "";
 
-  snapshot.forEach(docSnap => {
-    const product = docSnap.data();
-  
-    // Hide products that are out of stock
-    if (
-      product.quantity !== undefined &&
-      product.quantity <= 0
-    ) return;
-  
-    allProducts.push({
-      id: docSnap.id,
-      ...product
-    });
-  });
+      const currentPage = decodeURIComponent(window.location.pathname);
 
-  displayProducts(allProducts);
-}
+      if (currentPage.includes("buyer dashboard.html")) {
+      
+        window.location.href =
+          `product-detail.html?id=${product.id}&from=buyer`;
+      
+      } else {
+      
+        window.location.href =
+          `product-detail.html?id=${product.id}&from=index`;
+      
+      }
 
-function displayProducts(products) {
-  const productList = document.getElementById("productList");
-  productList.innerHTML = "";
+      const currentPage = decodeURIComponent(window.location.pathname);
 
-  products.forEach(product => {
-    const card = document.createElement("div");
-    card.classList.add("product-card");
-
-    card.innerHTML = `
-      <img src="${product.images ? product.images[0] : product.imageURL}" class="product-img" style="cursor:pointer;">
-      <h3>${product.name}</h3>
-      <p class="price">$${product.price}</p>
-      <p class="desc">${product.description}</p>
-    `;
-
-    //  CLICK IMAGE INSTEAD OF BUTTON //
-    card.querySelector("img").addEventListener("click", () => {
-      window.location.href = `product-detail.html?id=${product.id}`;
-    });
+      if (currentPage.includes("buyer dashboard.html")) {
+      
+        window.location.href =
+          `product-detail.html?id=${product.id}&from=buyer`;
+      
+      } else {
+      
+        window.location.href =
+          `product-detail.html?id=${product.id}&from=index`;
+      
+      }
 
     productList.appendChild(card);
+
   });
+}
+
+
+// ================= PUBLIC HOMEPAGE PRODUCTS =================
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const productList = document.getElementById("productList");
+
+  if (productList) {
+    loadProducts();
+  }
+
+});
+
+// ================= BACK TO STORE =================
+
+const backToStoreBtn =
+  document.getElementById("backToStoreBtn");
+
+if (backToStoreBtn) {
+
+  backToStoreBtn.addEventListener("click", () => {
+
+    const params =
+      new URLSearchParams(window.location.search);
+
+    const from = params.get("from");
+
+    if (from === "buyer") {
+
+      window.location.href =
+        "buyer dashboard.html";
+
+    } else {
+
+      window.location.href =
+        "index.html";
+
+    }
+
+  });
+
+      if (currentPage.includes("buyer dashboard.html")) {
+
+  });
+}
+
+
+// ================= PUBLIC HOMEPAGE PRODUCTS =================
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const productList = document.getElementById("productList");
+
+  if (productList) {
+    loadProducts();
+  }
+
+
+        window.location.href =
+// ================= BACK TO STORE =================
+
+const backToStoreBtn =
+  document.getElementById("backToStoreBtn");
+
+if (backToStoreBtn) {
+
+  backToStoreBtn.addEventListener("click", () => {
+
+    const params =
+      new URLSearchParams(window.location.search);
+
+    const from = params.get("from");
+
+    if (from === "buyer") {
+
+      window.location.href =
+        "buyer dashboard.html";
+
+    } else {
+
+      window.location.href =
+        "index.html";
+
+    }
+
+  });
+
+    productList.appendChild(card);
+
+  });
+}
+
+
+// ================= PUBLIC HOMEPAGE PRODUCTS =================
+
+  document.addEventListener("DOMContentLoaded", () => {
+
+    const productList = document.getElementById("productList");
+
+    if (productList) {
+      loadProducts();
+    }
+
+  });
+
+// ================= BACK TO STORE =================
+
+const backToStoreBtn =
+  document.getElementById("backToStoreBtn");
+
+if (backToStoreBtn) {
+
+  backToStoreBtn.addEventListener("click", () => {
+
+    const params =
+      new URLSearchParams(window.location.search);
+
+    const from = params.get("from");
+
+    if (from === "buyer") {
+
+      window.location.href =
+        "buyer dashboard.html";
+
+    } else {
+
+      window.location.href =
+        "index.html";
+
+    }
+
+  });
+
+}
+
+
+// ================= PUBLIC HOMEPAGE PRODUCTS =================
+
+  document.addEventListener("DOMContentLoaded", () => {
+
+    const productList = document.getElementById("productList");
+
+    if (productList) {
+      loadProducts();
+    }
+
+  });
+
 
   /*setupBuyButtons();
   <button class="buyBtn"
@@ -580,7 +757,6 @@ function displayProducts(products) {
 </button>
   //setupAddCartButtons();*/
 
-}
 
 //========== AI SEARCH FUNCTION ==========//
   const aiSearchBtn = document.getElementById("aiSearchBtn");
@@ -2255,6 +2431,8 @@ if (logoutBtn) {
   });
 }
 
+/*=============PASSWORD RESET FUNCTION============*/
+
 const resetBtn = document.getElementById("resetPasswordBtn");
 
 if (resetBtn) {
@@ -2267,12 +2445,92 @@ if (resetBtn) {
     }
 
     try {
-      await sendPasswordResetEmail(auth, email);
-      alert("Password reset email sent. Check your inbox.");
+      /*await sendPasswordResetEmail(auth, email);
+      alert("Password reset email sent. Check your inbox.");*/
+
+    const response = await fetch(
+      "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/sendPasswordResetEmail",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to send password reset email.");
+    }
+
+    alert("Password reset email sent. Please check your inbox.");    
+
     } catch (err) {
       alert(err.message);
     }
   });
+}
+
+// ===========================
+// RESEND VERIFICATION EMAIL
+// ===========================
+
+const resendBtn = document.getElementById("resendVerificationBtn");
+
+if (resendBtn) {
+
+  resendBtn.addEventListener("click", async () => {
+
+    const email = document.getElementById("email").value;
+
+    if (!email) {
+      alert("Please enter your email first.");
+      return;
+    }
+
+    try {
+
+      const response = await fetch(
+        "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/sendVerificationEmail",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+
+            email,
+            uid: "resend",
+            fullName: ""
+
+          })
+
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error);
+      }
+
+      alert(
+        "A new verification email has been sent.\n\nPlease check your inbox."
+      );
+
+    } catch (err) {
+
+      alert(err.message);
+
+    }
+
+  });
+
 }
 
 /* ================= CORE MESSAGING ================= */
@@ -3713,3 +3971,20 @@ if (submitReviewBtn) {
 document
     .getElementById("sendTestEmailBtn")
     .addEventListener("click", window.sendTestEmail);*/
+
+
+// ================= PUBLIC HOMEPAGE ==08/22/26===============
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const productList = document.getElementById("productList");
+
+  console.log("Homepage check:", window.location.pathname);
+  console.log("productList:", productList);
+
+  if (productList) {
+    console.log("Calling loadProducts...");
+    loadProducts();
+  }
+
+});

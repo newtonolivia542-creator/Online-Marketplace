@@ -17,7 +17,7 @@
 <div class="container">
 
   <!-- LEFT SIDE -->
-  <div class="left">
+  <!--div class="left">
     <h1>Join Marketly</h1>
     <p>
       Start buying and selling with ease.<br><br>
@@ -26,7 +26,8 @@
   </div>-->
 
   <!-- RIGHT SIDE -->
-  <div class="right">
+   <div class="right-panel">
+  
     <form id="registerForm" class="login-card">
 
       <h2>Create Account</h2>
@@ -69,6 +70,15 @@
 
 </div>
 
+<div id="footer"></div>
+
+<script>
+fetch("footer.html")
+  .then(response => response.text())
+  .then(data => {
+    document.getElementById("footer").innerHTML = data;
+  });
+</script>
 
 </body>
 </html>

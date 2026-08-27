@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
 
@@ -248,110 +249,45 @@
         font-size: 32px;
       }
 
-  <title>Lesovia - Buy & Sell Online</title>
+      .search-container {
+        flex-direction: column;
+      }
 
-  <meta name="description" content="Lesovia is a modern multi-vendor marketplace where users can buy and sell products easily and securely.">
+    }
 
-  <meta name="keywords" content="online marketplace, buy online, sell online, ecommerce, Lesovia">
+  </style>
 
-  <meta name="robots" content="index, follow">
-
-  <!-- Open Graph SEO -->
-  <meta property="og:title" content="Lesovia">
-  <meta property="og:description" content="Shop smart. Sell easy.">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://online-marketplace-e99cd.web.app/">
-
-  <!-- Optional social preview image -->
-  <meta property="og:image" content="https://online-marketplace-e99cd.web.app/images/Lesovia-logo.png">
-
-  <nav class="navbar">
-    <!--<div class="logo">
-        <img src="css/images/lesovia-logo.png" alt="Lesovia Logo">
-        <span>Lesovia</span>
-    </div>-->
-</nav>
-
-  <link rel="stylesheet" href="../css/login.css" />
-  <link rel="stylesheet" href="../css/footer.css">
-  <link rel="icon" type="image/svg+xml" href="../images/lesovia.svg">
 </head>
-<!--<body>
-
-  <div class="container">
-    <div class="left">
-      <h1>Welcome to Solix</h1>
-      <p>Your marketplace for better living.</p>
-    </div>
-  
-    <div class="right">
-      <form id="loginForm" class="login-card">
-        <h2>Login</h2>
-  
-        <input type="email" id="email" placeholder="Email" required>
-        <input type="password" id="password" placeholder="Password" required>
-  
-        <button type="submit" class="btn-primary">Login</button>
-        <button id="resetPasswordBtn" class="btn-secondary">
-          Forgot Password?
-        </button>
-  
-        <p>No account? <a href="register.html">Register</a></p>
-      </form>
-    </div>
-  </div>
-
-<script type="module" src="../js/app.js"></script>
-
-<div class="container"> -->
-
-  <!-- Page Content Here -->
-
-<!--</div>
-
-<footer class="site-footer">
-
-<div class="footer-links">
-  <a href="terms.html">Terms of Service</a>
-  <a href="privacy.html">Privacy Policy</a>
-  <a href="seller-agreement.html">Seller Agreement</a>
-  <a href="about.html">About Us</a>
-  <a href="contact.html">Contact Us</a>
-</div>
-
-<p>&copy; 2026 Solora. All Rights Reserved.</p>
-
-</footer>
-
-</body>
-</html> -->
 
 <body>
-        <div class="right-panel">
-  
-          <div class="login-card">
-  
-              <h2>Login</h2>
-  
-              <form id="loginForm">
-  
-                  <input
-                      id="email"
-                      type="email"
-                      placeholder="Email"
-                      required>
-  
-                  <input
-                      id="password"
-                      type="password"
-                      placeholder="Password"
-                      required>
-  
-                  <button
-                      type="submit"
-                      class="btn-primary">
-  
-                      Login
+
+  <!-- ================= NAVIGATION ================= -->
+
+  <nav class="navbar">
+
+    <a href="index.html" class="logo">
+
+      <img
+        src="../images/lesovia.svg"
+        alt="Lesovia"
+      >
+
+      Lesovia
+
+    </a>
+
+    <div class="nav-links">
+
+      <a href="index.html">
+        Home
+      </a>
+
+      <a href="#categories">
+        Categories
+      </a>
+
+      <a href="login.html" class="login-btn">
+        Login
       </a>
 
       <a href="register.html" class="register-btn">
@@ -382,117 +318,117 @@
         id="searchInput"
         placeholder="What are you looking for?"
       >
-  
-                  </button>
-  
-              </form>
-  
-            <button
-                id="resetPasswordBtn"
-                class="btn-secondary">
-                Forgot Password?
-            </button>
-      <!--button
-          id="resendVerificationBtn"
-          class="btn-secondary">
 
-          Resend Verification Email
+      <button id="searchBtn">
+        Search
+      </button>
 
-      </button-->
-  
-              <p>
-  
-                  Don't have an account?
-  
-                  <a href="register.html">
-  
-                      Register
-  
-                  </a>
-  
-                </p>
-  
-          </div>
-  
+    </div>
+
+  </section>
+
+
+  <!-- ================= CATEGORIES ================= -->
+
+  <section
+    class="categories"
+    id="categories"
+  >
+
+    <h2>
+      Shop by Category
+    </h2>
+
+    <div class="category-list">
+
+      <div class="category">
+        Electronics
       </div>
-  
-  </div>  
-  
-  <!-- Page Content -->
 
-<div id="footer"></div>
+      <div class="category">
+        Fashion
+      </div>
 
-<script>
-fetch("footer.html")
-  .then(response => response.text())
-  .then(data => {
-    document.getElementById("footer").innerHTML = data;
-  });
-</script>
+      <div class="category">
+        Home
+      </div>
 
-  <script type="module" src="../js/app.js"></script>
+      <div class="category">
+        Beauty
+      </div>
+
+      <div class="category">
+        Sports
+      </div>
+
+      <div class="category">
+        Other
+      </div>
+
+    </div>
+
+  </section>
 
 
-</body>
-</html>
-  
+  <!-- ================= PRODUCTS ================= -->
+
+  <section class="products-section">
+
+    <h2>
+      Featured Products
+    </h2>
+
+    <div id="productList">
+
         Loading products...
 
+    </div>
 
-  <br><br>
-    <br><br>
-  <br><br>
+  </section>
 
 
-<div class="container">
+  <!-- ================= FOOTER ================= -->
 
-  <!-- LEFT SIDE -->
-  <div class="left-panel">
-    <h1>Lesovia</h1>
-    <h3 style="margin-top:10px;">Shop Smart. Sell Easy.</h3>  
-  <p>
-    Discover great products from trusted sellers.<br><br>
+  <footer>
 
-    Welcome to Lesovia - an AI-powered marketplace designed to make buying and selling simple, secure, and smarter.<br><br>
+    <div>
 
-    Shop with confidence. Sell with ease. Grow together.
-  </p>
-  </div>
-
-  <!-- RIGHT SIDE -->
- <div class="right-panel">
-    <div class="login-card">
-
-      <h2>Welcome</h2>
-      <p style="margin-bottom: 20px;">Start your journey</p>
-
-      <a href="login.html">
-        <button class="btn-primary">Login</button>
+      <a href="terms.html">
+        Terms
       </a>
 
-      <a href="register.html">
-        <button class="btn-secondary">Register</button>
+      <a href="privacy.html">
+        Privacy
+      </a>
+
+      <a href="seller-agreement.html">
+        Seller Agreement
+      </a>
+
+      <a href="about.html">
+        About
+      </a>
+
+      <a href="contact.html">
+        Contact
       </a>
 
     </div>
-  </div>
 
-</div>
+    <p style="margin-top:20px;">
+      © 2026 Lesovia. All Rights Reserved.
+    </p>
 
-<script type="module" src="../js/app.js"></script>
+  </footer>
 
 
-<div id="footer"></div>
+  <!-- Firebase / Existing Application -->
 
-<script>
-fetch("footer.html")
-  .then(response => response.text())
-  .then(data => {
-    document.getElementById("footer").innerHTML = data;
-  });
-</script>
-
-</footer>
+  <script
+    type="module"
+    src="../js/app.js">
+  </script>
 
 </body>
+
 </html>

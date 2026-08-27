@@ -115,9 +115,9 @@ if (loginForm) {
     const password = document.getElementById("password").value;
 
     try {
-      const userCred = await signInWithEmailAndPassword(auth, email, password);
+      const userCred = await signInWithEmailAndPassword(auth, email, password);      
 
-      await userCred.user.reload();
+     /* await userCred.user.reload();
       if (!userCred.user.emailVerified) {
 
         alert(
@@ -562,6 +562,62 @@ async function loadProducts() {
   if (!productList) return;
 
   const snapshot = await getDocs(collection(db, "products"));
+  allProducts = [];
+  productList.innerHTML = "";
+
+  snapshot.forEach(docSnap => {
+    const product = docSnap.data();
+  
+    // Hide products that are out of stock
+    if (
+      product.quantity !== undefined &&
+      product.quantity <= 0
+    ) return;
+  
+    allProducts.push({
+      id: docSnap.id,
+      ...product
+    });
+  });
+
+  displayProducts(allProducts);
+}
+//=======DISPLAY PRODUCT FUNCTION ===========//
+
+function displayProducts(products) {
+
+  const productList = document.getElementById("productList");
+
+  if (!productList) return;
+
+  productList.innerHTML = "";
+
+  products.forEach(product => {
+
+    const card = document.createElement("div");
+
+    card.classList.add("product-card");
+
+    card.innerHTML = `
+      <img
+        src="${product.images ? product.images[0] : product.imageURL}"
+        class="product-img"
+        style="cursor:pointer;"
+      >
+
+      <h3>${product.name}</h3>
+
+      <p class="price">
+        $${product.price}
+      </p>
+
+      <p class="desc">
+        ${product.description}
+      </p>
+    `;
+
+    // CLICK PRODUCT IMAGE
+    card.querySelector("img").addEventListener("click", () => {
 
       const currentPage = decodeURIComponent(window.location.pathname);
 
@@ -577,19 +633,7 @@ async function loadProducts() {
       
       }
 
-      const currentPage = decodeURIComponent(window.location.pathname);
-
-      if (currentPage.includes("buyer dashboard.html")) {
-      
-        window.location.href =
-          `product-detail.html?id=${product.id}&from=buyer`;
-      
-      } else {
-      
-        window.location.href =
-          `product-detail.html?id=${product.id}&from=index`;
-      
-      }
+    });
 
     productList.appendChild(card);
 
@@ -608,98 +652,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
 });
-
-// ================= BACK TO STORE =================
-
-const backToStoreBtn =
-  document.getElementById("backToStoreBtn");
-
-if (backToStoreBtn) {
-
-  backToStoreBtn.addEventListener("click", () => {
-
-    const params =
-      new URLSearchParams(window.location.search);
-
-    const from = params.get("from");
-
-    if (from === "buyer") {
-
-      window.location.href =
-        "buyer dashboard.html";
-
-    } else {
-
-      window.location.href =
-        "index.html";
-
-    }
-
-  });
-
-      if (currentPage.includes("buyer dashboard.html")) {
-
-  });
-}
-
-
-// ================= PUBLIC HOMEPAGE PRODUCTS =================
-
-document.addEventListener("DOMContentLoaded", () => {
-
-  const productList = document.getElementById("productList");
-
-  if (productList) {
-    loadProducts();
-  }
-
-
-        window.location.href =
-// ================= BACK TO STORE =================
-
-const backToStoreBtn =
-  document.getElementById("backToStoreBtn");
-
-if (backToStoreBtn) {
-
-  backToStoreBtn.addEventListener("click", () => {
-
-    const params =
-      new URLSearchParams(window.location.search);
-
-    const from = params.get("from");
-
-    if (from === "buyer") {
-
-      window.location.href =
-        "buyer dashboard.html";
-
-    } else {
-
-      window.location.href =
-        "index.html";
-
-    }
-
-  });
-
-    productList.appendChild(card);
-
-  });
-}
-
-
-// ================= PUBLIC HOMEPAGE PRODUCTS =================
-
-  document.addEventListener("DOMContentLoaded", () => {
-
-    const productList = document.getElementById("productList");
-
-    if (productList) {
-      loadProducts();
-    }
-
-  });
 
 // ================= BACK TO STORE =================
 
@@ -2479,7 +2431,7 @@ if (resetBtn) {
 // RESEND VERIFICATION EMAIL
 // ===========================
 
-const resendBtn = document.getElementById("resendVerificationBtn");
+/*const resendBtn = document.getElementById("resendVerificationBtn");
 
 if (resendBtn) {
 
@@ -2531,7 +2483,7 @@ if (resendBtn) {
 
   });
 
-}
+}*/
 
 /* ================= CORE MESSAGING ================= */
 

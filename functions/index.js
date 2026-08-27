@@ -294,11 +294,16 @@ exports.aiSearchProducts = onRequest(
 
         const { email, uid, fullName } = req.body;
 
-        if (!email || !uid) {
+       /* if (!email || !uid) {
           return res.status(400).send({
             error: "Missing email or uid."
           });
-        }
+        }*/
+      if (!email) {
+        return res.status(400).send({
+          error: "Email is required."
+        });
+      }
 
       const verificationLink =
         await admin.auth().generateEmailVerificationLink(email, {

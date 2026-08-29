@@ -104,6 +104,15 @@ service cloud.firestore {
     }
 
     // =========================
+    // EMAIL RATE LIMITS (verification / password reset cooldowns)
+    // =========================
+    // Written and read exclusively by Cloud Functions via the Admin SDK,
+    // which bypasses rules entirely -- clients never touch this directly.
+    match /emailRateLimits/{key} {
+      allow read, write: if false;
+    }
+
+    // =========================
     // CARTS
     // =========================
     match /carts/{cartId} {

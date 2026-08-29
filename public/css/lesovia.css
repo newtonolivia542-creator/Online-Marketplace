@@ -265,6 +265,7 @@ input:focus, select:focus, textarea:focus {
 .badge-success { background: var(--lv-green-mist); color: var(--lv-green-deep); border: 1px solid var(--lv-green-mist-line); }
 .badge-warning { background: var(--lv-gold-mist); color: #8a660a; }
 .badge-danger  { background: var(--lv-danger-mist); color: var(--lv-danger); }
+.badge-info    { background: var(--lv-info-mist); color: var(--lv-info); }
 .badge-neutral { background: var(--lv-canvas); color: var(--lv-slate); border: 1px solid var(--lv-line); }
 
 .notification-badge {
@@ -323,4 +324,140 @@ input:focus, select:focus, textarea:focus {
   border-radius: var(--lv-radius-md);
   font-size: 14px;
   box-shadow: var(--lv-shadow-md);
+}
+
+/* ---------- Shop search matches (index.html / buyer dashboard) ---------- */
+.shop-results-heading {
+  margin: 10px 0 12px;
+  font-size: 15px;
+  color: var(--lv-slate);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shop-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.shop-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--lv-surface);
+  border: 1px solid var(--lv-green-mist-line);
+  border-radius: var(--lv-radius-md);
+  padding: 16px 20px;
+  text-decoration: none;
+  color: var(--lv-ink);
+  min-width: 240px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.shop-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--lv-shadow-md);
+}
+
+.shop-card-icon {
+  font-size: 28px;
+}
+
+.shop-card h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.shop-card-rating {
+  color: var(--lv-gold);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.shop-card-desc {
+  font-size: 13px;
+  color: var(--lv-slate);
+  margin: 0;
+}
+
+/* ---------- Shop storefront page (shop.html) ---------- */
+.shop-header {
+  max-width: 1000px;
+  margin: 30px auto 10px;
+  padding: 0 5%;
+}
+
+.shop-header h1 {
+  margin-bottom: 6px;
+}
+
+.shop-header .shop-rating-line {
+  color: var(--lv-gold);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.shop-header .shop-description {
+  color: var(--lv-slate);
+  max-width: 65ch;
+}
+
+/* ---------- Seller dashboard product stats (uploaded / sold) ---------- */
+.seller-product-stats {
+  font-size: 13px;
+  color: var(--lv-slate);
+}
+
+/* ---------- Seller sales history (seller-history.html) ---------- */
+.sold-item-card {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  background: var(--lv-surface);
+  border: 1px solid var(--lv-line);
+  border-radius: var(--lv-radius-md);
+  padding: 18px;
+  margin-bottom: 16px;
+  max-width: 900px;
+}
+
+.sold-item-img {
+  width: 180px;
+  height: 180px;
+  object-fit: cover;
+  border-radius: var(--lv-radius-sm);
+  flex-shrink: 0;
+  background: var(--lv-canvas);
+}
+
+.sold-item-info {
+  flex: 1;
+}
+
+.sold-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.sold-item-header h3 {
+  margin: 0;
+}
+
+.sold-item-info p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .sold-item-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
 }

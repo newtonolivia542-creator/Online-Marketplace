@@ -73,6 +73,45 @@ async function getUidFromRequest(req) {
   }
 }
 
+// Same as getUidFromRequest but returns the full decoded token -- used
+// where the caller's own verified email is needed (never the email a
+// client claims in the request body).
+async function getDecodedTokenFromRequest(req) {
+  const authHeader = req.headers.authorization || "";
+  const match = authHeader.match(/^Bearer (.+)$/);
+
+  if (!match) return null;
+
+  try {
+    return await admin.auth().verifyIdToken(match[1]);
+  } catch (error) {
+    logger.error("Failed to verify ID token:", error);
+    return null;
+  }
+}
+
+// Per-email cooldown so one address can't be spammed with repeated
+// verification/reset emails. Checked BEFORE anything looks up whether the
+// account is real, so the cooldown itself never becomes a second way to
+// tell real emails from fake ones.
+async function isUnderEmailCooldown(purpose, email, cooldownSeconds) {
+  const key = `${purpose}_${email.trim().toLowerCase()}`;
+  const ref = db.collection("emailRateLimits").doc(key);
+  const snap = await ref.get();
+
+  const now = Date.now();
+
+  if (snap.exists) {
+    const lastSentAt = snap.data().lastSentAt?.toMillis?.() ?? 0;
+    if (now - lastSentAt < cooldownSeconds * 1000) {
+      return true;
+    }
+  }
+
+  await ref.set({ lastSentAt: admin.firestore.FieldValue.serverTimestamp() });
+  return false;
+}
+
 // =================================
 // CREATE PAYMENT INTENT (CART / BUY NOW)
 // =================================
@@ -501,6 +540,18 @@ Requirements:
 );
 
    //AI SEARCH FUNCTION//
+// Real category list the storefront's category dropdown actually uses --
+// telling the model this is the closed set it must choose from (or null)
+// makes the hard category filter below reliable instead of guessing.
+const KNOWN_PRODUCT_CATEGORIES = [
+  "fashion",
+  "electronics",
+  "food",
+  "home",
+  "cosmetics",
+  "plants",
+];
+
 exports.aiSearchProducts = onRequest(
   {
     secrets: ["OPENAI_API_KEY"],
@@ -511,107 +562,146 @@ exports.aiSearchProducts = onRequest(
 
     try {
 
+      const { search } = req.body || {};
+
+      if (!search || !String(search).trim()) {
+        return res.status(400).send({
+          error: "Search text is required."
+        });
+      }
+
+      logger.info("AI Search:", search);
+
       const client = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-     const { search } = req.body;
+      const response = await client.responses.create({
+        model: "gpt-5.5",
+        input: `
+You are a shopping-intent extractor for the Lesovia marketplace.
 
-    if (!search) {
-      return res.status(400).send({
-        error: "Search text is required."
+Customer search: "${search}"
+
+Extract the customer's shopping intent as JSON with EXACTLY these keys:
+
+{
+  "category": one of [${KNOWN_PRODUCT_CATEGORIES.map((c) => `"${c}"`).join(", ")}], or null if it doesn't clearly match one,
+  "brand": string or null,
+  "colors": array of color words mentioned (lowercase), or [],
+  "condition": "new", "used", or null,
+  "minPrice": number or null,
+  "maxPrice": number or null,
+  "keywords": array of important descriptive words from the search (lowercase)
+}
+
+Return ONLY valid JSON. No explanations, no markdown.
+`,
       });
-    }
 
-    logger.info("AI Search:", search);
+      logger.info("AI raw output:", response.output_text);
 
-    const response = await client.responses.create({
-      model: "gpt-5.5",
-      input: `
-    You are an AI shopping assistant for Lesovia.
+      let filters;
 
-    A customer entered the following search:
+      try {
+        filters = JSON.parse(response.output_text);
+      } catch (parseError) {
+        // Don't fail the whole search just because the model didn't return
+        // clean JSON -- fall back to a keyword-only search using the raw
+        // query instead of erroring out on the buyer.
+        logger.error("Failed to parse AI filters, falling back to keyword-only search:", parseError);
+        filters = {
+          category: null,
+          brand: null,
+          colors: [],
+          condition: null,
+          minPrice: null,
+          maxPrice: null,
+          keywords: [],
+        };
+      }
 
-    "${search}"
+      const category = KNOWN_PRODUCT_CATEGORIES.includes(
+        String(filters.category || "").toLowerCase()
+      )
+        ? String(filters.category).toLowerCase()
+        : null;
 
-    Extract the customer's shopping intent.
+      // The catalog is read in full and filtered/ranked here rather than
+      // with Firestore where() clauses -- price range + category together
+      // would need a composite index, and there's no reasonable way to do
+      // fuzzy keyword/brand/color matching in Firestore at all. At this
+      // catalog's size, one read is cheap; this also matches how the rest
+      // of the storefront already reads "products".
+      const snapshot = await db.collection("products").get();
 
-    Return ONLY valid JSON.
+      const keywordTerms = [
+        ...(Array.isArray(filters.keywords) ? filters.keywords : []),
+        ...(filters.brand ? [filters.brand] : []),
+        ...(Array.isArray(filters.colors) ? filters.colors : []),
+        ...String(search).toLowerCase().split(/\s+/),
+      ]
+        .map((term) => String(term).toLowerCase().trim())
+        .filter(Boolean);
 
-    Use this format:
+      const matches = [];
 
-    {
-      "name": "",
-      "category": "",
-      "brand": "",
-      "colors": [],
-      "condition": "",
-      "minPrice": null,
-      "maxPrice": null,
-      "keywords": []
-    }
+      snapshot.forEach((doc) => {
+        const product = doc.data();
 
-    Do not include explanations.
-    Do not include markdown.
-    Do not include anything except JSON.
-    `
-    });
+        // Hard filters -- only applied when the model was confident enough
+        // to name an exact known category or a price bound.
+        if (category && String(product.category || "").toLowerCase() !== category) {
+          return;
+        }
 
-    logger.info(response.output_text);
+        if (filters.minPrice != null && Number(product.price) < Number(filters.minPrice)) {
+          return;
+        }
 
-    //res.send({
-     // filters: response.output_text
-   //});
+        if (filters.maxPrice != null && Number(product.price) > Number(filters.maxPrice)) {
+          return;
+        }
 
-    const filters = JSON.parse(response.output_text);
-//temporary replacing//
-   // let query = db.collection("products");
-    //const snapshot = await db.collection("products").get();
-    const snapshot = await db.collection("products")
-      .where("category", "==", "fashion")
-      .get();
-        logger.info("Number of products:", snapshot.size);
+        // Out of stock -- same rule the storefront's own product grid uses.
+        if (product.quantity !== undefined && product.quantity <= 0) {
+          return;
+        }
 
-    const products = [];
+        // Soft ranking -- how much of the extracted/raw search text shows
+        // up in this product's own name/description/brand/category/colors.
+        const haystack = [
+          product.name,
+          product.description,
+          product.brand,
+          product.category,
+          ...(Array.isArray(product.colors) ? product.colors : []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
 
-    snapshot.forEach((doc) => {
-      products.push({
-        id: doc.id,
-        ...doc.data(),
+        let score = 0;
+        for (const term of keywordTerms) {
+          if (term && haystack.includes(term)) score++;
+        }
+
+        matches.push({ id: doc.id, ...product, _score: score });
       });
-    });
 
-    logger.info(products);
+      matches.sort((a, b) => b._score - a._score);
 
-    res.send({
-      products
-    })
+      const products = matches.map(({ _score, ...rest }) => rest);
 
-    // Filter by category
-    /*if (filters.category) {
-      query = query.where("category", "==", filters.category.toLowerCase());
-    }
-
-    // Filter by maximum price
-    if (filters.maxPrice !== null) {
-      query = query.where("price", "<=", filters.maxPrice);
-    }
-
-    const snapshot = await query.get();
-
-    const products = [];
-
-    snapshot.forEach((doc) => {
-      products.push({
-        id: doc.id,
-        ...doc.data(),
+      logger.info(`AI search matched ${products.length} product(s) for filters:`, {
+        ...filters,
+        category,
       });
-    });
 
-    res.send({
-      filters,
-      products,
-    });*/
+      res.send({
+        products,
+        filters: { ...filters, category },
+      });
 
     } catch (error) {
 
@@ -640,20 +730,28 @@ exports.aiSearchProducts = onRequest(
 
       try {
 
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        // Only ever called right after the caller signs in (fresh
+        // registration, or a login attempt with an unverified email) --
+        // a valid session always exists at that point. Requiring it here
+        // means this can only ever send a verification email to the
+        // caller's OWN account, never an arbitrary address someone else
+        // supplies in the request body.
+        const decoded = await getDecodedTokenFromRequest(req);
 
-        const { email, uid, fullName } = req.body;
+        if (!decoded || !decoded.email) {
+          return res.status(401).send({ error: "Authentication required." });
+        }
 
-       /* if (!email || !uid) {
-          return res.status(400).send({
-            error: "Missing email or uid."
+        const email = decoded.email;
+        const { fullName } = req.body || {};
+
+        if (await isUnderEmailCooldown("verify", email, 60)) {
+          return res.status(429).send({
+            error: "Please wait a moment before requesting another verification email.",
           });
-        }*/
-      if (!email) {
-        return res.status(400).send({
-          error: "Email is required."
-        });
-      }
+        }
+
+        const resend = new Resend(process.env.RESEND_API_KEY);
 
       const verificationLink =
         await admin.auth().generateEmailVerificationLink(email, {
@@ -763,9 +861,7 @@ exports.sendPasswordResetEmail = onRequest(
   },
   async (req, res) => {
     try {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-
-      const { email } = req.body;
+      const { email } = req.body || {};
 
       if (!email) {
         return res.status(400).send({
@@ -773,16 +869,34 @@ exports.sendPasswordResetEmail = onRequest(
         });
       }
 
-      const resetLink = await admin.auth().generatePasswordResetLink(email, {
-        url: process.env.APP_URL,
-      });
+      const genericResponse = {
+        success: true,
+        message: "If an account exists for that email, a password reset link has been sent.",
+      };
 
-      const emailResult = await resend.emails.send({
-        from: "Lesovia <no-reply@lesovia.com>",
-        to: email,
-        subject: "Reset your Lesovia password",
+      // Checked before Firebase Auth is ever consulted, so the cooldown
+      // response is identical whether or not the account exists.
+      if (await isUnderEmailCooldown("reset", email, 60)) {
+        return res.send(genericResponse);
+      }
 
-        html: `
+      // Whatever happens below -- real account, unknown email, malformed
+      // address, a Resend failure -- the caller always gets the same
+      // response. Distinguishing these here is exactly what would let an
+      // attacker enumerate which emails have accounts.
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        const resetLink = await admin.auth().generatePasswordResetLink(email, {
+          url: process.env.APP_URL,
+        });
+
+        const emailResult = await resend.emails.send({
+          from: "Lesovia <no-reply@lesovia.com>",
+          to: email,
+          subject: "Reset your Lesovia password",
+
+          html: `
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:30px;">
 
 <h1 style="color:#0b7a3d;">Reset Your Password</h1>
@@ -828,14 +942,21 @@ Your password will remain unchanged.
 
 </div>
 `,
-      });
+        });
 
-      logger.info("Password reset email:", emailResult);
+        logger.info("Password reset email:", emailResult);
 
-      res.send({
-        success: true,
-        message: "Password reset email sent.",
-      });
+      } catch (innerError) {
+        // Most commonly auth/user-not-found -- log it for you, never
+        // reveal it to the caller.
+        logger.info(
+          "Password reset requested for an email that doesn't map to a real account (or send failed):",
+          innerError.message
+        );
+      }
+
+      res.send(genericResponse);
+
     } catch (error) {
       logger.error(error);
 

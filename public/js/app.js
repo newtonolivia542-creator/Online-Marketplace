@@ -43,6 +43,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 let allProducts = [];
+let allSellers = [];
 let editingProductId = null;
 
 // True if "Generate with AI" successfully filled the description box during
@@ -66,17 +67,21 @@ if (registerForm) {
 
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      //await fetch(
+
+      // The function only trusts its OWN verified read of who's calling it
+      // (via this token), never an email/uid the client claims -- so it has
+      // to be sent here.
+      const verifyIdToken = await userCred.user.getIdToken();
+
       const response = await fetch(
         "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/sendVerificationEmail",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${verifyIdToken}`,
           },
           body: JSON.stringify({
-            email: userCred.user.email,
-            uid: userCred.user.uid,
             fullName: fullName,
           }),
         }
@@ -138,16 +143,20 @@ if (loginForm) {
 
     if (!userCred.user.emailVerified) {
 
-        // Automatically send another verification email
+        // Automatically send another verification email. The function
+        // trusts only its own verified read of who's calling it (via this
+        // token), not an email the client claims.
+        const verifyIdToken = await userCred.user.getIdToken();
+
         const response = await fetch(
             "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/sendVerificationEmail",
             {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
+                    Authorization: `Bearer ${verifyIdToken}`,
                 },
                 body: JSON.stringify({
-                    email: userCred.user.email,
                     fullName: ""
                 }),
             }
@@ -727,6 +736,11 @@ async function loadProducts() {
   allProducts = [];
   productList.innerHTML = "";
 
+  // Cached here (not just where it's used) so the search box can match
+  // shop names on any page that loads the product grid, without a second
+  // round trip per search.
+  loadSellersForSearch();
+
   snapshot.forEach(docSnap => {
     const product = docSnap.data();
   
@@ -744,6 +758,86 @@ async function loadProducts() {
 
   displayProducts(allProducts);
 }
+
+// Caches every seller's storeName so the search box can match shop names,
+// not just product names.
+async function loadSellersForSearch() {
+  const snapshot = await getDocs(
+    query(collection(db, "users"), where("role", "==", "seller"))
+  );
+
+  allSellers = [];
+
+  snapshot.forEach(docSnap => {
+    const seller = docSnap.data();
+    if (!seller.storeName) return; // hasn't set up a shop yet
+
+    allSellers.push({
+      id: docSnap.id,
+      storeName: seller.storeName,
+      storeDescription: seller.storeDescription || ""
+    });
+  });
+}
+
+// One overall rating for the WHOLE shop -- the average across every review
+// left on any of that seller's products, not a per-product breakdown.
+async function getShopRating(sellerId) {
+  const snapshot = await getDocs(
+    query(collection(db, "reviews"), where("sellerId", "==", sellerId))
+  );
+
+  if (snapshot.empty) {
+    return { average: null, count: 0 };
+  }
+
+  let total = 0;
+  snapshot.forEach(docSnap => {
+    total += Number(docSnap.data().rating) || 0;
+  });
+
+  return {
+    average: (total / snapshot.size).toFixed(1),
+    count: snapshot.size
+  };
+}
+
+// Renders the "matching shop(s)" banner above the product grid when a
+// search term matches a store name. Separate container from #productList
+// so shop matches and product matches never overwrite each other.
+async function displayShopMatches(sellers) {
+  const container = document.getElementById("shopResults");
+  if (!container) return;
+
+  if (!sellers || sellers.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const cards = await Promise.all(sellers.map(async (seller) => {
+    const { average, count } = await getShopRating(seller.id);
+
+    const ratingText = average
+      ? `⭐ ${average} (${count} review${count === 1 ? "" : "s"})`
+      : "No reviews yet";
+
+    return `
+      <a class="shop-card" href="shop.html?sellerId=${seller.id}">
+        <div class="shop-card-icon">🏪</div>
+        <div>
+          <h3>${seller.storeName}</h3>
+          <p class="shop-card-rating">${ratingText}</p>
+          ${seller.storeDescription ? `<p class="shop-card-desc">${seller.storeDescription}</p>` : ""}
+        </div>
+      </a>
+    `;
+  }));
+
+  container.innerHTML = `
+    <h3 class="shop-results-heading">Matching shops</h3>
+    <div class="shop-card-row">${cards.join("")}</div>
+  `;
+}
 //=======DISPLAY PRODUCT FUNCTION ===========//
 
 function displayProducts(products) {
@@ -753,6 +847,17 @@ function displayProducts(products) {
   if (!productList) return;
 
   productList.innerHTML = "";
+
+  if (!products || products.length === 0) {
+    productList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-glyph">🔍</div>
+        <div><strong>No products matched.</strong></div>
+        <div style="font-size:13px; margin-top:4px;">Try a different search or category.</div>
+      </div>
+    `;
+    return;
+  }
 
   products.forEach(product => {
 
@@ -880,7 +985,16 @@ if (backToStoreBtn) {
     aiSearchBtn.addEventListener("click", async () => {
 
       const search =
-        document.getElementById("aiSearchInput").value;
+        document.getElementById("aiSearchInput").value.trim();
+
+      if (!search) {
+        alert("Type what you're looking for first.");
+        return;
+      }
+
+      aiSearchBtn.disabled = true;
+      const originalLabel = aiSearchBtn.innerText;
+      aiSearchBtn.innerText = "Searching...";
 
       try {
 
@@ -899,13 +1013,22 @@ if (backToStoreBtn) {
 
         const data = await response.json();
 
-    console.log("Products:", data.products);
+        if (!response.ok) {
+          alert(data.error || "AI search failed. Please try again.");
+          return;
+        }
 
-    displayProducts(data.products);
+        displayProducts(data.products || []);
 
       } catch (err) {
 
         console.error(err);
+        alert("AI search failed. Please try again.");
+
+      } finally {
+
+        aiSearchBtn.disabled = false;
+        aiSearchBtn.innerText = originalLabel;
 
       }
 
@@ -916,15 +1039,21 @@ if (backToStoreBtn) {
 const searchBtn = document.getElementById("searchBtn");
 if (searchBtn) {
   searchBtn.addEventListener("click", () => {
-    const term = document.getElementById("searchInput").value.toLowerCase();
+    const term = document.getElementById("searchInput").value.trim().toLowerCase();
 
-    const filtered = allProducts.filter(p =>
-      p.name.toLowerCase().includes(term)
-    );
+    const filtered = term
+      ? allProducts.filter(p => p.name.toLowerCase().includes(term))
+      : allProducts;
 
     displayProducts(filtered);
+
+    const matchingShops = term
+      ? allSellers.filter(s => s.storeName.toLowerCase().includes(term))
+      : [];
+
+    displayShopMatches(matchingShops);
   });
-} 
+}
 
 /* ================= BUY PRODUCT ================= 
 function setupBuyButtons() {
@@ -1327,19 +1456,51 @@ function loadSellerProducts() {
     where("sellerId", "==", auth.currentUser.uid)
   );
 
-  onSnapshot(q, (snapshot) => {
+  onSnapshot(q, async (snapshot) => {
     sellerProducts.innerHTML = "";
 
-    snapshot.forEach(docSnap => {
+    for (const docSnap of snapshot.docs) {
       const product = docSnap.data();
 
-     // if ((product.quantity || 0) <= 0) return;
     const quantity =
       product.quantity !== undefined
         ? product.quantity
         : 1;
 
-    if (quantity <= 0) return;
+      // Out-of-stock products used to be hidden entirely here, which meant
+      // a seller couldn't even find one to restock or remove. Now they
+      // still show, just flagged clearly with the red badge below.
+      let stockBadgeClass = "badge-success";
+      let stockBadgeText = `✅ ${quantity} in stock`;
+
+      if (quantity <= 0) {
+        stockBadgeClass = "badge-danger";
+        stockBadgeText = "❌ Out of stock";
+      } else if (quantity <= 5) {
+        stockBadgeClass = "badge-warning";
+        stockBadgeText = `⚠️ Only ${quantity} left`;
+      }
+
+      // Total sold = sum of quantity across every order ever placed for
+      // this product. Orders only ever exist after a successful payment
+      // (see verifyPayment), so this is an accurate historical count even
+      // if the product has since been restocked.
+      const ordersSnap = await getDocs(
+        query(collection(db, "orders"), where("productId", "==", docSnap.id))
+      );
+
+      let totalSold = 0;
+      ordersSnap.forEach(orderDoc => {
+        totalSold += Number(orderDoc.data().quantity) || 0;
+      });
+
+      // "Uploaded" = how many units were originally listed. Tracked
+      // directly for products created after originalQuantity existed;
+      // reconstructed for older ones as current stock + everything sold.
+      const totalUploaded =
+        product.originalQuantity !== undefined
+          ? product.originalQuantity
+          : quantity + totalSold;
 
       const productDiv = document.createElement("div");
       productDiv.id = `product-${docSnap.id}`;
@@ -1356,6 +1517,9 @@ function loadSellerProducts() {
       <strong>${product.name}</strong>
       <p>${product.description}</p>
       <span>$${product.price}</span>
+
+      <p><span class="badge ${stockBadgeClass}">${stockBadgeText}</span></p>
+      <p class="seller-product-stats">📦 ${totalUploaded} uploaded &nbsp;|&nbsp; 🛒 ${totalSold} sold</p>
 
       <div class="btn-group">
         <button onclick="goToEdit('${docSnap.id}')">Edit</button>
@@ -1408,7 +1572,7 @@ function loadSellerProducts() {
           }, 5000);
         }, 300);
       }
-    });
+    }
   });
 }
 //======New Edit Function ===========//
@@ -1883,6 +2047,91 @@ loadReviews(productId);
 }
 
   // ===== PRODUCT DETAIL LOGIC END =====
+
+// ===== SHOP PAGE (shop.html?sellerId=...) =====
+// Public, like product-detail.html -- no login required to browse a shop.
+if (window.location.pathname.includes("shop.html")) {
+
+  async function loadShopPage() {
+    const sellerId = new URLSearchParams(window.location.search).get("sellerId");
+    const grid = document.getElementById("shopProductList");
+
+    if (!sellerId) {
+      document.getElementById("shopName").innerText = "Shop not found";
+      return;
+    }
+
+    const sellerSnap = await getDoc(doc(db, "users", sellerId));
+
+    if (!sellerSnap.exists() || sellerSnap.data().role !== "seller") {
+      document.getElementById("shopName").innerText = "Shop not found";
+      return;
+    }
+
+    const seller = sellerSnap.data();
+
+    document.getElementById("shopName").innerText =
+      seller.storeName || "Unnamed Shop";
+
+    document.getElementById("shopDescription").innerText =
+      seller.storeDescription || "";
+
+    const { average, count } = await getShopRating(sellerId);
+
+    document.getElementById("shopRating").innerText = average
+      ? `⭐ ${average} (${count} review${count === 1 ? "" : "s"})`
+      : "No reviews yet";
+
+    const productsSnap = await getDocs(
+      query(collection(db, "products"), where("sellerId", "==", sellerId))
+    );
+
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    let hasAnyInStock = false;
+
+    productsSnap.forEach((docSnap) => {
+      const product = docSnap.data();
+
+      // Same "hide out of stock" rule the main storefront grid uses.
+      if (product.quantity !== undefined && product.quantity <= 0) return;
+
+      hasAnyInStock = true;
+
+      const card = document.createElement("div");
+      card.classList.add("product-card");
+
+      card.innerHTML = `
+        <img
+          src="${product.images ? product.images[0] : product.imageURL}"
+          class="product-img"
+          style="cursor:pointer;"
+        >
+        <h3>${product.name}</h3>
+        <p class="price">$${product.price}</p>
+        <p class="desc">${product.description}</p>
+      `;
+
+      card.querySelector("img").addEventListener("click", () => {
+        window.location.href = `product-detail.html?id=${docSnap.id}&from=index`;
+      });
+
+      grid.appendChild(card);
+    });
+
+    if (!hasAnyInStock) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-glyph">🛍️</div>
+          <div><strong>This shop has no products in stock right now.</strong></div>
+        </div>
+      `;
+    }
+  }
+
+  loadShopPage();
+}
 
 // ===== CART PAGE =====
 if (window.location.pathname.includes("cart.html")) {
@@ -2489,51 +2738,85 @@ window.markDelivered = async (orderId) => {
 };
 
 /*============SOLD ITEMS HISTORY ===========*/
+// This used to show products that had sold OUT entirely (quantity hit 0),
+// which only ever covered items that had completely sold and told you
+// nothing about individual sales. "History" is now driven by the actual
+// orders collection instead -- one entry per sale, with the buyer, date,
+// quantity, and amount that sale actually involved.
 async function loadSoldProducts() {
   const soldList = document.getElementById("soldProducts");
   if (!soldList || !auth.currentUser) return;
 
   const q = query(
-    collection(db, "products"),
+    collection(db, "orders"),
     where("sellerId", "==", auth.currentUser.uid)
   );
 
   const snapshot = await getDocs(q);
   soldList.innerHTML = "";
 
-  snapshot.forEach(docSnap => {
-    const product = docSnap.data();
-    console.log(product);
-    console.log(product.colors);
-    console.log(product.sizes);
+  if (snapshot.empty) {
+    soldList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-glyph">🧾</div>
+        <div><strong>No sales yet.</strong></div>
+        <div style="font-size:13px; margin-top:4px;">Every order you receive will show up here.</div>
+      </div>
+    `;
+    return;
+  }
 
-    // Only sold products
-    //if (product.sold !== true) return;
-    if ((product.quantity || 0) > 0) return;
+  const orders = snapshot.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
+  for (const order of orders) {
+
+    const productSnap = await getDoc(doc(db, "products", order.productId));
+    const product = productSnap.exists() ? productSnap.data() : {};
     const image = product.images?.[0] || product.imageURL || "";
 
-    soldList.innerHTML += `
-      <li style="
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 10px;
-      ">
-        <img src="${image}" style="
-          width: 50px;
-          height: 50px;
-          object-fit: cover;
-          border-radius: 6px;
-        " />
+    const buyerSnap = await getDoc(doc(db, "users", order.userId));
+    const buyer = buyerSnap.exists() ? buyerSnap.data() : {};
+    const buyerName = buyer.fullName || "Unknown buyer";
+    const buyerEmail = buyer.email || "";
 
-        <div>
-          <strong>${product.name}</strong><br>
-          $${product.price}
+    const purchaseDate = order.createdAt?.toDate
+      ? order.createdAt.toDate().toLocaleString()
+      : "N/A";
+
+    const quantity = order.quantity || 1;
+    const unitPrice = order.price ?? product.price ?? 0;
+    const total = (unitPrice * quantity).toFixed(2);
+
+    let statusBadgeClass = "badge-neutral";
+    if (order.status === "paid") statusBadgeClass = "badge-warning";
+    else if (order.status === "shipped") statusBadgeClass = "badge-info";
+    else if (order.status === "delivered") statusBadgeClass = "badge-success";
+
+    const variantBits = [
+      order.color ? `Color: ${order.color}` : null,
+      order.size ? `Size: ${order.size}` : null,
+    ].filter(Boolean).join(" &middot; ");
+
+    soldList.innerHTML += `
+      <div class="sold-item-card">
+        <img src="${image}" class="sold-item-img" alt="${product.name || ''}">
+
+        <div class="sold-item-info">
+          <div class="sold-item-header">
+            <h3>${product.name || "Unknown product"}</h3>
+            <span class="badge ${statusBadgeClass}">${(order.status || "unknown").toUpperCase()}</span>
+          </div>
+
+          <p><strong>Purchased:</strong> ${purchaseDate}</p>
+          <p><strong>Quantity:</strong> ${quantity}${variantBits ? ` &middot; ${variantBits}` : ""}</p>
+          <p><strong>Buyer:</strong> ${buyerName}${buyerEmail ? ` (${buyerEmail})` : ""}</p>
+          <p><strong>Total paid:</strong> $${total}</p>
         </div>
-      </li>
+      </div>
     `;
-  });
+  }
 }
 
 /* ================= LOGOUT ================= */
@@ -2774,7 +3057,7 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
               doc(db, "users", otherUserId)
           );
 
-      let messagePage = "messages.html"; // Default
+      let messagePage = "messages.html"; // Default -- the real buyer messages page
 
       if (receiverDoc.exists()) {
 
@@ -2782,9 +3065,10 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
 
           if (receiverData.role === "seller") {
               messagePage = "seller-messages.html";
-          } else if (receiverData.role === "buyer") {
-              messagePage = "buyer-messages.html";
           }
+          // Buyers already get the correct default above -- "buyer-messages.html"
+          // was never a real file, so this used to fall through Firebase
+          // Hosting's catch-all rewrite straight to index.html.
 
       }
 
@@ -2872,6 +3156,11 @@ async function loadSellerMessages() {
   const msgList = document.getElementById("sellerMessages");
 
   if (!msgList || !auth.currentUser) return;
+
+  // If we arrived here from a "New Message" notification link, jump to and
+  // highlight that specific conversation once it's rendered below.
+  const targetConversationId =
+    new URLSearchParams(window.location.search).get("conversationId");
 
   // Scoped to this user as sender OR receiver -- a Firestore rule that
   // enforces message privacy will reject an unfiltered collection scan,
@@ -3038,7 +3327,7 @@ async function loadSellerMessages() {
       "";
 
     msgList.innerHTML += `
-      <li style="
+      <li id="conversation-${convoId}" style="
         margin-bottom:20px;
         border:1px solid #ccc;
         padding:10px;
@@ -3092,6 +3381,21 @@ async function loadSellerMessages() {
       </li>
     `;
   }
+
+  if (targetConversationId) {
+    setTimeout(() => {
+      const card = document.getElementById(`conversation-${targetConversationId}`);
+
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.classList.add("highlight-order");
+
+        setTimeout(() => {
+          card.classList.remove("highlight-order");
+        }, 5000);
+      }
+    }, 300);
+  }
 }
 
 
@@ -3100,28 +3404,33 @@ async function loadSellerMessages() {
 async function loadBuyerMessages() {
   const msgList = document.getElementById("buyerMessages");
   if (!msgList || !auth.currentUser) return;
-//Line that I revert//
-  const snapshot = await getDocs(collection(db, "messages"));
+
+  // If we arrived here from a "New Message" notification link, jump to and
+  // highlight that specific conversation once it's rendered below.
+  const targetConversationId =
+    new URLSearchParams(window.location.search).get("conversationId");
+
+  // Scoped to this user as sender OR receiver -- an unfiltered collection
+  // scan here would both leak every user's private messages to anyone, and
+  // (since the deployed Firestore rules require this same scoping) fail
+  // outright with a permission-denied error.
+  const q = query(
+    collection(db, "messages"),
+    or(
+      where("senderId", "==", auth.currentUser.uid),
+      where("receiverId", "==", auth.currentUser.uid)
+    )
+  );
+
+  const snapshot = await getDocs(q);
   msgList.innerHTML = "";
 
   const conversations = {};
 
-  // ONLY ONE LOOP (correct one)
   snapshot.forEach(docSnap => {
     const msg = docSnap.data();
-    console.log(
-      "DOC:",
-      docSnap.id,
-      msg.conversationId,
-      msg.productId,
-      msg.text
-    );
-    if (!msg.productId) return;
 
-    if (
-      msg.receiverId !== auth.currentUser.uid &&
-      msg.senderId !== auth.currentUser.uid
-    ) return;
+    if (!msg.productId) return;
 
     // ALWAYS recompute conversationId
     const convoId = msg.conversationId;
@@ -3267,13 +3576,13 @@ chatHTML += `
     const productImage = product.images?.[0] || product.imageURL || "";
 
     msgList.innerHTML += `
-      <li style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
+      <li id="conversation-${convoId}" style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
         <img src="${productImage}" width="80"><br>
         <strong>${product.name || "Unknown Product"}</strong>
 
         <div class="chat-box">
           ${chatHTML}</div>
- 
+
         <textarea id="buyer-${convoId}" placeholder="Reply..."></textarea><br>
 
         <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}')">
@@ -3286,6 +3595,21 @@ chatHTML += `
         </button>
       </li>
     `;
+  }
+
+  if (targetConversationId) {
+    setTimeout(() => {
+      const card = document.getElementById(`conversation-${targetConversationId}`);
+
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.classList.add("highlight-order");
+
+        setTimeout(() => {
+          card.classList.remove("highlight-order");
+        }, 5000);
+      }
+    }, 300);
   }
 }
 

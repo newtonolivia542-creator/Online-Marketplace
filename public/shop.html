@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
+  <meta charset="UTF-8">
+  <title>Shop - Lesovia</title>
+  <link rel="stylesheet" href="../css/buyer dashboard.css">
+</head>
+<body>
+  <header class="navbar">
+    <h2 id="welcome"></h2>
+
+    <div class="nav-actions">
+      <button id="logoutBtn" style="color: white; background-color: rgb(205, 42, 42);">Logout</button>
+    </div>
+  </header>
+
+  <div class="shop-header">
+    <h1 id="shopName">Loading shop...</h1>
+    <p class="shop-rating-line" id="shopRating"></p>
+    <p class="shop-description" id="shopDescription"></p>
+  </div>
+
+  <div class="bottom-actions" style="margin: 10px 0 30px; text-align:center;">
+    <button onclick="window.location.href='index.html'">Back to Store</button>
+  </div>
+
+  <div id="shopProductList" class="product-grid" style="padding: 0 5% 40px;"></div>
+
+  <script type="module" src="../js/app.js"></script>
+</body>
+</html>

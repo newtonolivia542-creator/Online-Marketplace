@@ -2495,9 +2495,14 @@ async function loadSellerOrders() {
 
   sellerOrders.innerHTML = "";
 
+  const sortedOrderDocs = snapshot.docs.slice().sort((a, b) => {
+      const aTime = a.data().createdAt ? a.data().createdAt.toMillis() : 0;
+      const bTime = b.data().createdAt ? b.data().createdAt.toMillis() : 0;
+      return bTime - aTime;
+  });
 
       //NEW FUNCTION FOR IT TO INCLUDE BUYER NAME, COLOR, AND QUATITY ORDER//
-      for (const docSnap of snapshot.docs) {
+      for (const docSnap of sortedOrderDocs) {
 
         const order = docSnap.data();
     
@@ -2546,8 +2551,8 @@ async function loadSellerOrders() {
     let shipBtn = "";
     let deliverBtn = "";
 
-    // PENDING → show both
-    if (order.status === "pending") {
+    // PAID (or legacy PENDING) → not shipped yet, show both
+    if (order.status === "paid" || order.status === "pending") {
       shipBtn = `<button onclick="markShipped('${docSnap.id}')">Ship</button>`;
       deliverBtn = `<button onclick="markDelivered('${docSnap.id}')">Deliver</button>`;
     }
@@ -2576,7 +2581,7 @@ async function loadSellerOrders() {
 
     // Status color
     let statusColor = "black";
-    if (order.status === "pending") statusColor = "orange";
+    if (order.status === "paid" || order.status === "pending") statusColor = "orange";
     else if (order.status === "shipped") statusColor = "blue";
     else if (order.status === "delivered") statusColor = "green";
 
@@ -2584,16 +2589,22 @@ async function loadSellerOrders() {
 
     const total = productPrice * quantity;
 
+    const orderDate = order.createdAt
+        ? order.createdAt.toDate().toLocaleString()
+        : "Unknown date";
+
     // FINAL UI
     sellerOrders.innerHTML += `
-    <li style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
-    
+    <li id="order-${docSnap.id}" style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+
         <img src="${productImage}"
              style="width:60px;height:60px;object-fit:cover;border-radius:8px;">
-    
+
         <div>
-    
+
             <p><strong>Buyer:</strong> ${buyerName}</p>
+
+            <p><small style="color:gray;">${orderDate}</small></p>
     
             <p>
                 <strong>${productName}</strong> |
@@ -2618,11 +2629,29 @@ async function loadSellerOrders() {
             ${shipBtn}
     
             ${deliverBtn}
-    
+
         </div>
-    
+
     </li>
     `;
+  }
+
+  const highlightOrderId =
+      new URLSearchParams(window.location.search).get("orderId");
+
+  if (highlightOrderId) {
+      setTimeout(() => {
+          const card = document.getElementById(`order-${highlightOrderId}`);
+
+          if (card) {
+              card.scrollIntoView({ behavior: "smooth", block: "center" });
+              card.classList.add("highlight-order");
+
+              setTimeout(() => {
+                  card.classList.remove("highlight-order");
+              }, 5000);
+          }
+      }, 300);
   }
 }
 
@@ -4025,7 +4054,17 @@ if (submitReviewBtn) {
                       return;
                   }
 
-                  snapshot.forEach((docSnap) => {
+                  const sortedDocs = snapshot.docs.slice().sort((a, b) => {
+                      const aTime = a.data().createdAt
+                          ? a.data().createdAt.toMillis()
+                          : 0;
+                      const bTime = b.data().createdAt
+                          ? b.data().createdAt.toMillis()
+                          : 0;
+                      return bTime - aTime;
+                  });
+
+                  sortedDocs.forEach((docSnap) => {
                     console.log(snapshot.size);
 
                       const notification = docSnap.data();

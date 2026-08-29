@@ -14,67 +14,74 @@
 </head>
 <body>
 
-<h1>Admin Control Panel</h1>
-<button id="logoutBtn">Logout</button>
+<div class="admin-topbar">
+  <div class="admin-brand"><span class="dot"></span> Lesovia Admin</div>
 
-<button class="btn btn-secondary" onclick="window.location.href='admin-admin-usersproducts.html'">View all User and their productList</button>
-    <button class="btn btn-secondary" onclick="window.location.href='admin-allOrders.html'">All Orders</button>
+  <div class="admin-topbar-right">
+    <div class="admin-welcome">
+      Welcome, <strong id="adminName">Admin</strong>
+      <div class="admin-email-sub" id="adminEmail"></div>
+    </div>
+    <button id="logoutBtn" class="btn btn-danger">Logout</button>
+  </div>
+</div>
 
-<h2>All Users</h2>
-<!--<ul id="userList"></ul>-->
-<table id="userList">
+<div class="admin-hero">
+  <h1>Admin Control Panel</h1>
+  <p>Manage products, sellers, buyers, orders, and platform security from one place.</p>
+</div>
 
-  <thead>
-    <tr>
-      <th>Number Users</th>
-      <th>Email</th>
-      <th>Role</th>
-      <th>Date Created</th>
-      <th>Last Login</th>
-      <th>Status</th>
-      <th>Ban/Unban</th>
-      <th>Ban Status</th>
-      <th>Ban Reason</th>
+<div class="admin-card-grid">
 
-    </tr>
-  </thead>
-  <tbody>
-    <!-- Users will be loaded here -->
-  </tbody>
-</table>
+  <a class="admin-nav-card admin-accent-green" href="admin-products.html">
+    <div class="admin-nav-icon">🛍️</div>
+    <h3>All Products</h3>
+    <p>Browse, inspect, and remove any product listed on Lesovia.</p>
+  </a>
 
-<h2>All Products</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Count</th>
-      <th>Image</th>
-      <th>Name</th>
-      <th>Price</th>
-      <th>Seller</th>
-      <th>Action</th>
-      <th>Uploaded At</th>
-    </tr>
-  </thead>
-  <tbody id="productList"></tbody>
-</table>
+  <a class="admin-nav-card admin-accent-info" href="admin-allorders.html">
+    <div class="admin-nav-icon">📦</div>
+    <h3>All Orders</h3>
+    <p>Track every order, shipping status, and delivery time.</p>
+  </a>
 
-<h2>All Orders</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Product</th>
-      <th>Buyer</th>
-      <th>Seller</th>
-      <th>Purchased At</th>
-      <th>Status</th>
-      <th>Shipped At</th>
-      <th>Delivered At</th>
-      <th>Delivery Time</th>
-    </tr>
-  </thead>
-  <tbody id="allOrders"></tbody>
-</table>
+  <a class="admin-nav-card admin-accent-green" href="admin-sellers.html">
+    <div class="admin-nav-icon">🏪</div>
+    <h3>Sellers</h3>
+    <p>See every seller account and how many products they list.</p>
+  </a>
+
+  <a class="admin-nav-card admin-accent-info" href="admin-buyers.html">
+    <div class="admin-nav-icon">🛒</div>
+    <h3>Buyers</h3>
+    <p>See every buyer account and how many orders they've placed.</p>
+  </a>
+
+  <a class="admin-nav-card admin-accent-gold" href="admin-seller-reviews.html">
+    <div class="admin-nav-icon">⭐</div>
+    <h3>Seller Reviews</h3>
+    <p>Every review on the platform, grouped by the seller it belongs to.</p>
+  </a>
+
+  <a class="admin-nav-card admin-accent-danger" href="admin-security.html">
+    <div class="admin-nav-icon">🛡️</div>
+    <h3>Security</h3>
+    <p>Ban or unban accounts and review user status.</p>
+  </a>
+
+  <a class="admin-nav-card admin-accent-danger" href="admin-admins.html">
+    <div class="admin-nav-icon">🔑</div>
+    <h3>Admins</h3>
+    <p>Audit every account with admin access on the platform.</p>
+  </a>
+
+  <a class="admin-nav-card admin-accent-neutral" href="admin-usersproducts.html">
+    <div class="admin-nav-icon">👥</div>
+    <h3>Users &amp; Product Lists</h3>
+    <p>Combined legacy view of users and their product listings.</p>
+  </a>
+
+</div>
 
 <script type="module" src="../js/admin.js"></script>
 </body>

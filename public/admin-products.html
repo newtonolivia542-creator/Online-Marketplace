@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
+  <title>All Products | Lesovia Admin</title>
+  <link rel="stylesheet" href="../css/admin.css">
+  <style>
+    /* Hidden until app.js confirms the correct login/role -- see revealPage() */
+    body { visibility: hidden; }
+  </style>
+</head>
+<body>
+
+<h1>All Products</h1>
+<button id="logoutBtn">Logout</button>
+<button class="btn btn-secondary admin-back-btn" onclick="window.location.href='admin.html'">Back</button>
+
+<input
+  type="text"
+  id="productSearch"
+  class="admin-search-input"
+  placeholder="Search products by name, category, or price..."
+>
+
+<div id="adminProductGrid"></div>
+
+<script type="module" src="../js/admin.js"></script>
+</body>
+</html>

@@ -45,6 +45,11 @@ import {
 let allProducts = [];
 let editingProductId = null;
 
+// True if "Generate with AI" successfully filled the description box during
+// the CURRENT upload/edit session. Used to record descriptionGeneratedByAI
+// on the product -- resets on submit and on entering/leaving edit mode.
+let aiGeneratedThisSession = false;
+
 const functions = getFunctions();
 //const storage = getStorage();
 
@@ -450,18 +455,37 @@ if (productForm) {
 
     // UPDATE PRODUCT
     if (editingProductId) {
-      await updateDoc(doc(db, "products", editingProductId), productData);
+
+      // originalQuantity is never touched on edit -- it records what was
+      // uploaded at creation time, not the current stock level. Only
+      // include descriptionGeneratedByAI if AI was actually used in THIS
+      // edit -- otherwise leave whatever value (or absence of one) the
+      // product already had untouched.
+      const updatePayload = { ...productData };
+
+      if (aiGeneratedThisSession) {
+        updatePayload.descriptionGeneratedByAI = true;
+      }
+
+      await updateDoc(doc(db, "products", editingProductId), updatePayload);
 
       alert("Product updated!");
       editingProductId = null;
+      aiGeneratedThisSession = false;
 
       document.querySelector("#productForm button").innerText = "Post to Marketplace";
     }
 
     // ADD NEW PRODUCT
     else {
-      await addDoc(collection(db, "products"), productData);
+      await addDoc(collection(db, "products"), {
+        ...productData,
+        originalQuantity: productData.quantity,
+        descriptionGeneratedByAI: aiGeneratedThisSession
+      });
+
       alert("Product posted!");
+      aiGeneratedThisSession = false;
     }
 
     productForm.reset();
@@ -550,6 +574,7 @@ if (generateBtn) {
                   alert(data.error || "AI generation failed.");
               } else {
                   descriptionBox.value = data.description;
+                  aiGeneratedThisSession = true;
               }
           
           } catch (err) {
@@ -1397,6 +1422,7 @@ async function checkEditMode() {
   if (!editId) return;
 
   editingProductId = editId;
+  aiGeneratedThisSession = false;
 
   const docSnap = await getDoc(doc(db, "products", editId));
   const product = docSnap.data();

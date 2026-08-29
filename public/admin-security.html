@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="../css/admin.css">
+  <style>
+    /* Hidden until app.js confirms the correct login/role -- see revealPage() */
+    body { visibility: hidden; }
+  </style>
+</head>
+<body>
+
+<h1>Admin Control Panel</h1>
+<button id="logoutBtn">Logout</button>
+
+    <button onclick="window.location.href='admin.html'">Back</button>
+
+<h2>All Users</h2>
+<!--<ul id="userList"></ul>-->
+
+<input
+  type="text"
+  id="userSearch"
+  class="admin-search-input"
+  placeholder="Search users by name or email..."
+>
+
+<table id="userList">
+
+  <thead>
+    <tr>
+      <th>Number Users</th>
+      <th>Email</th>
+      <th>Role</th>
+      <th>Date Created</th>
+      <th>Last Login</th>
+      <th>Status</th>
+      <th>Ban/Unban</th>
+      <th>Ban Status</th>
+      <th>Ban Reason</th>
+
+    </tr>
+  </thead>
+  <tbody>
+ 
+<script type="module" src="../js/admin.js"></script>
+</body>
+</html>

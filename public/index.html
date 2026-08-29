@@ -2,6 +2,10 @@
 <html lang="en">
 
 <head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
   <meta charset="UTF-8">
 
   <meta
@@ -23,23 +27,20 @@
 
   <style>
 
+    /* Layout only -- colors, fonts, buttons, and .product-card come from
+       lesovia.css. This page previously defined its own competing colors
+       for all of these, making the homepage look like a different site
+       from the dashboards. */
+
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
     }
 
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f7f9;
-      color: #222;
-    }
-
     /* ================= NAVBAR ================= */
 
     .navbar {
-      background: white;
-      border-bottom: 1px solid #e5e5e5;
       padding: 15px 5%;
       display: flex;
       align-items: center;
@@ -54,7 +55,6 @@
       display: flex;
       align-items: center;
       text-decoration: none;
-      color: #111;
       font-size: 24px;
       font-weight: bold;
     }
@@ -74,29 +74,28 @@
 
     .nav-links a {
       text-decoration: none;
-      color: #333;
       font-weight: 500;
     }
 
     .login-btn {
-      background: #0b7a3d;
+      background: var(--lv-green);
       color: white !important;
       padding: 10px 18px;
-      border-radius: 6px;
+      border-radius: var(--lv-radius-sm);
     }
 
     .register-btn {
-      border: 1px solid #0b7a3d;
-      color: #0b7a3d !important;
+      border: 1px solid var(--lv-green-mist);
+      color: white !important;
       padding: 9px 18px;
-      border-radius: 6px;
+      border-radius: var(--lv-radius-sm);
     }
 
     /* ================= HERO ================= */
 
     .hero {
-      background: white;
-      padding: 60px 5%;
+      background: var(--lv-surface);
+      padding: 28px 5% 18px;
       text-align: center;
     }
 
@@ -106,7 +105,7 @@
     }
 
     .hero p {
-      color: #666;
+      color: var(--lv-slate);
       font-size: 18px;
       margin-bottom: 30px;
     }
@@ -121,79 +120,51 @@
     .search-container input {
       flex: 1;
       padding: 15px;
-      border: 1px solid #ccc;
-      border-radius: 7px;
       font-size: 16px;
     }
 
     .search-container button {
       padding: 15px 25px;
-      border: none;
-      border-radius: 7px;
-      background: #0b7a3d;
-      color: white;
-      cursor: pointer;
       font-size: 16px;
-    }
-
-    /* ================= CATEGORIES ================= */
-
-    .categories {
-      padding: 30px 5%;
-      background: #f5f7f9;
-    }
-
-    .categories h2 {
-      margin-bottom: 20px;
-    }
-
-    .category-list {
-      display: flex;
-      gap: 15px;
-      flex-wrap: wrap;
-    }
-
-    .category {
-      background: white;
-      padding: 15px 25px;
-      border-radius: 8px;
-      cursor: pointer;
-      border: 1px solid #e5e5e5;
     }
 
     /* ================= PRODUCTS ================= */
 
     .products-section {
-      padding: 40px 5%;
+      padding: 8px 5% 40px;
     }
 
-    .products-section h2 {
-      margin-bottom: 25px;
+    .products-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 15px;
     }
 
-    #productsContainer {
+    .products-header h2 {
+      margin-bottom: 0;
+    }
+
+    #categoryFilter {
+      padding: 8px 12px;
+      border: 1px solid var(--lv-line);
+      border-radius: var(--lv-radius-sm);
+      font-size: 14px;
+      background: var(--lv-surface);
+      color: var(--lv-ink);
+    }
+
+    #productList {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
       gap: 25px;
     }
 
-    .product-card {
-      background: white;
-      border-radius: 10px;
-      overflow: hidden;
-      border: 1px solid #e5e5e5;
-      transition: transform 0.2s;
-    }
-
-    .product-card:hover {
-      transform: translateY(-3px);
-    }
-
     .product-card img {
       width: 100%;
       height: 200px;
-      object-fit: cover;
-      background: #eee;
+      background: var(--lv-canvas);
     }
 
     .product-info {
@@ -204,24 +175,20 @@
       margin-bottom: 8px;
     }
 
-    .product-price {
-      color: #0b7a3d;
-      font-size: 18px;
-      font-weight: bold;
-    }
-
     .product-condition {
-      color: #777;
+      color: var(--lv-slate);
       font-size: 14px;
       margin-top: 5px;
     }
 
     /* ================= FOOTER ================= */
+    /* Matches footer.css's .site-footer color so every page's footer
+       agrees, instead of this page's own separate near-black. */
 
     footer {
       margin-top: 50px;
       padding: 40px 5%;
-      background: #111;
+      background: #1f2937;
       color: white;
       text-align: center;
     }
@@ -253,6 +220,12 @@
         flex-direction: column;
       }
 
+      .products-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
     }
 
   </style>
@@ -282,21 +255,9 @@
         Home
       </a>
 
-      <a href="#categories">
+      <!--<a href="#categories">
         Categories
-      </a>
-
-      <h2>Browse Products</h2>
-
-    <select id="categoryFilter">
-      <option value="all">All</option>
-      <option value="fashion">Fashion</option>
-      <option value="electronics">Electronics</option>
-      <option value="food">Food</option>
-      <option value="home">Home</option>
-      <option value="cosmetics">Cosmetics</option>
-      <option value="plants">Plants</option>
-    </select>
+    </a>-->
 
 
       <a href="login.html" class="login-btn">
@@ -341,24 +302,28 @@
   </section>
 
 
-  <!-- ================= CATEGORIES ================= -->
+  <!-- ================= PRODUCTS ================= -->
 
-
-  <select id="categoryFilter">
-    <option value="all">All</option>
-    <option value="fashion">Fashion</option>
-    <option value="electronics">Electronics</option>
-    <option value="food">Food</option>
-    <option value="home">Home</option>
-    <option value="cosmetics">Cosmetics</option>
-    <option value="plants">Plants</option>
-  </select>
 
   <section class="products-section">
 
-    <h2>
-      Featured Products
-    </h2>
+    <div class="products-header">
+
+      <h2>
+        Featured Products
+      </h2>
+
+      <select id="categoryFilter">
+        <option value="all">All</option>
+        <option value="fashion">Fashion</option>
+        <option value="electronics">Electronics</option>
+        <option value="food">Food</option>
+        <option value="home">Home</option>
+        <option value="cosmetics">Cosmetics</option>
+        <option value="plants">Plants</option>
+      </select>
+
+    </div>
 
     <div id="productList">
 

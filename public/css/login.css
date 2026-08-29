@@ -2,7 +2,7 @@
   margin:0;
   padding:0;
   box-sizing:border-box;
-  font-family:Poppins,sans-serif;
+  font-family:var(--lv-font-body);
 }
 
 body{
@@ -13,7 +13,7 @@ body{
 
   flex-direction:column;
 
-  background:linear-gradient(135deg,#4da8ff,#15d4ff);
+  background:linear-gradient(135deg,var(--lv-green-deep),#1DAE6B);
 
 }
 
@@ -127,50 +127,23 @@ body{
 
 }
 
+/* Color comes from lesovia.css's .btn-primary/.btn-secondary; this file
+   only adds the sizing specific to the login/register card. */
 .btn-primary{
-
   width:100%;
-
   padding:16px;
-
-  background:#2196f3;
-
-  color:white;
-
-  border:none;
-
   border-radius:10px;
-
-  cursor:pointer;
-
   font-size:18px;
-
   font-weight:bold;
-
-}
-
-.btn-primary:hover{
-
-  background:#1976d2;
-
+  justify-content:center;
 }
 
 .btn-secondary{
-
   margin-top:15px;
-
   width:100%;
-
   padding:15px;
-
-  border:none;
-
-  background:#ececec;
-
   border-radius:10px;
-
-  cursor:pointer;
-
+  justify-content:center;
 }
 
 .login-card p{
@@ -183,35 +156,13 @@ body{
 
 .login-card a{
 
-  color:#2196f3;
+  color:var(--lv-green);
 
   text-decoration:none;
 
   font-weight:bold;
 
 }
-
-/*footer{
-
-  background:#1f2937;
-
-  color:white;
-
-  padding:25px;
-
-  text-align:center;
-
-}
-
-footer a{
-
-  color:white;
-
-  margin:0 18px;
-
-  text-decoration:none;
-
-}*/
 
 footer{
 

@@ -1,13 +1,11 @@
 
 body {
   margin: 0;
-  background: #f4f6f8;
-  color: #333;
 }
 
 /* Header */
 header {
-  background: #1e3a8a;
+  background: var(--lv-ink, #14231B);
   color: white;
   padding: 15px 25px;
   display: flex;
@@ -279,12 +277,12 @@ h1 {
   }
 
 #detailImage {
-  width: 30%;
-  max-height: 400px;   /* reduce height */
-  object-fit: contain; /* VERY IMPORTANT */
+  width: 100%;
+  max-width: 420px;
+  max-height: 400px;
   object-fit: cover;
-  background: #f9f9f9;
-  border-radius: 10px;
+  background: var(--lv-canvas, #f9f9f9);
+  border-radius: var(--lv-radius-md, 10px);
 }
 
 /* Slider buttons */
@@ -703,21 +701,21 @@ button[onclick]:hover {
 .logo span{
   font-size:36px;
   font-weight:700;
-  color:#2FA84F;
+  color: var(--lv-green-mist, #E8F5EC);
 }
 
 .logo-text{
-  font-family: "Poppins", sans-serif;
-  font-size: 36px;
-  font-weight: 800;
-  color: #22A447;
+  font-family: var(--lv-font-display, "Fraunces", serif);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--lv-green-mist, #E8F5EC);
   text-decoration: none;
   letter-spacing: -0.5px;
   transition: color 0.3s ease;
 }
 
 .logo-text:hover{
-  color: #1B8E39;
+  color: #fff;
 }
 
 #checkoutModal{

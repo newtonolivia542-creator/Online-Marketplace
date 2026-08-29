@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
   <meta charset="UTF-8" />
   <meta name="description" content="Buy affordable electronics, fashion, and more on Lesovia. Trusted multi-vendor marketplace.">
   <!--title>Buyer Dashboard</title -->
@@ -11,10 +15,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="../css/footer.css">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/buyer dashboard.css?v=3" />
+  <style>
+    /* Hidden until app.js confirms the correct login/role -- see revealPage() */
+    body { visibility: hidden; }
+  </style>
 </head>
 <body>
   <header>
@@ -44,16 +49,16 @@
   </button>
 <br><br>
 
-<button onclick="window.location.href='order.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">My Orders</button>
-    <button onclick="window.location.href='cart.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">View Cart</button>
+<button class="btn btn-secondary" onclick="window.location.href='order.html'">My Orders</button>
+    <button class="btn btn-secondary" onclick="window.location.href='cart.html'">View Cart</button>
 
-    <button onclick="window.location.href='messages.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">
+    <button class="btn btn-secondary" onclick="window.location.href='messages.html'">
       View Messages
     </button>
 
     <a
         href="buyer-notifications.html"
-        class="notification-btn" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;"
+        class="notification-btn"
     >
         🔔 Notifications
 
@@ -129,7 +134,6 @@
     </div>
   
 <script type="module" src="../js/app.js"></script>
-<link rel="stylesheet" href="../css/buyer dashboard.css?v=2" />
 <script src="https://js.stripe.com/v3/"></script>
 
 <footer class="site-footer">
@@ -142,7 +146,7 @@
     <a href="contact.html">Contact Us</a>
   </div>
 
-  <p>&copy; 2026 Solora. All Rights Reserved.</p>
+  <p>&copy; 2026 Lesovia. All Rights Reserved.</p>
 
 </footer>
 </body>

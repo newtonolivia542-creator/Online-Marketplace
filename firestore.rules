@@ -1,0 +1,167 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    function unchangedExcept(resource, request, allowedKeys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
+    }
+
+    // =========================
+    // USERS
+    // =========================
+    // - Anyone signed in may look up ONE specific user doc by id (needed so
+    //   a seller can show a buyer's name on an order, etc.).
+    // - Listing the WHOLE collection (admin.js's user table) is admin-only.
+    // - A user may only create their OWN doc, and only with role "buyer" or
+    //   "seller" -- "admin" can never be self-assigned.
+    // - A user may update their OWN doc but may never change their own
+    //   role. A verified admin may update ONLY status/banReason on someone
+    //   else's doc (ban/unban) -- nothing else, on nobody else's doc.
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role in ["buyer", "seller"];
+
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId
+          && request.resource.data.role == resource.data.role)
+        ||
+        (isAdmin()
+          && userId != request.auth.uid
+          && unchangedExcept(resource, request, ["status", "banReason"]))
+      );
+
+      allow delete: if false;
+    }
+
+    // =========================
+    // PRODUCTS
+    // =========================
+    // Public read (storefront is browsable while logged out). Only the
+    // owning seller may create/update their own listings; sellerId can't
+    // be reassigned on update. Owning seller or an admin may delete.
+    match /products/{productId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.sellerId == request.auth.uid
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "seller";
+
+      allow update: if isSignedIn()
+        && resource.data.sellerId == request.auth.uid
+        && request.resource.data.sellerId == resource.data.sellerId;
+
+      allow delete: if isSignedIn()
+        && (resource.data.sellerId == request.auth.uid || isAdmin());
+    }
+
+    // =========================
+    // ORDERS
+    // =========================
+    // Orders are only ever created by the verifyPayment Cloud Function
+    // (Admin SDK, bypasses these rules entirely) -- clients can never
+    // create one. Buyer, seller, or admin may read. The owning seller may
+    // update ONLY status/shippedAt/deliveredAt, and only to move the order
+    // to "shipped" or "delivered" -- price, quantity, buyer, and "paid"
+    // status can't be touched from the client.
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if false;
+
+      allow update: if isSignedIn()
+        && resource.data.sellerId == request.auth.uid
+        && unchangedExcept(resource, request, ["status", "shippedAt", "deliveredAt"])
+        && request.resource.data.status in ["shipped", "delivered"];
+
+      allow delete: if false;
+    }
+
+    // =========================
+    // PENDING ORDERS (checkout staging)
+    // =========================
+    // Written and read exclusively by Cloud Functions via the Admin SDK,
+    // which bypasses rules entirely -- clients never touch this directly.
+    match /pendingOrders/{orderId} {
+      allow read, write: if false;
+    }
+
+    // =========================
+    // CARTS
+    // =========================
+    match /carts/{cartId} {
+      allow read, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId;
+    }
+
+    // =========================
+    // MESSAGES
+    // =========================
+    // Only the sender/receiver of a message may ever read it. Senders may
+    // only create as themselves. The only allowed update is appending to
+    // "deletedBy" (soft delete) by a participant.
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+
+      allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+
+      allow update: if isSignedIn()
+        && (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid)
+        && unchangedExcept(resource, request, ["deletedBy"]);
+
+      allow delete: if false;
+    }
+
+    // =========================
+    // NOTIFICATIONS
+    // =========================
+    // Any signed-in user may create a notification FOR another user (this
+    // is how "you got a message/order/review" notifications work) -- but
+    // only the notification's owner may ever read, mark-read, or delete it.
+    match /notifications/{notificationId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // =========================
+    // REVIEWS
+    // =========================
+    // Public read (shown on product pages to logged-out visitors too).
+    // Only the authoring buyer may create/edit/delete their own review.
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.buyerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.buyerId == request.auth.uid;
+    }
+
+    // Deny anything not explicitly handled above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

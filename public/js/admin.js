@@ -33,6 +33,10 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
+  // Page starts hidden (see the inline <style> in admin.html) so there's no
+  // flash of admin data before this check runs.
+  document.body.style.visibility = "visible";
+
   loadUsers();
   loadProducts(); // This call needs loadProducts to be defined already
   loadOrders();

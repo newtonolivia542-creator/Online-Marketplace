@@ -1,0 +1,323 @@
+/* =========================================================================
+   LESOVIA DESIGN SYSTEM
+   Shared tokens + base elements + components. Load this BEFORE any
+   page-specific stylesheet so page CSS only needs genuinely unique layout.
+   ========================================================================= */
+
+/* ---------- Tokens ---------- */
+:root {
+  --lv-green: #0B7A3D;
+  --lv-green-deep: #086030;
+  --lv-green-mist: #E8F5EC;
+  --lv-green-mist-line: #CFE9D7;
+
+  --lv-ink: #14231B;
+  --lv-slate: #5B6B62;
+  --lv-slate-soft: #8A968F;
+
+  --lv-canvas: #F6F8F6;
+  --lv-surface: #FFFFFF;
+  --lv-line: #E2E8E4;
+
+  --lv-danger: #C6362E;
+  --lv-danger-deep: #A72922;
+  --lv-danger-mist: #FBE9E8;
+
+  --lv-gold: #C8930A;
+  --lv-gold-mist: #FBF1DC;
+
+  --lv-space-1: 4px;
+  --lv-space-2: 8px;
+  --lv-space-3: 16px;
+  --lv-space-4: 24px;
+  --lv-space-5: 32px;
+  --lv-space-6: 48px;
+
+  --lv-radius-sm: 6px;
+  --lv-radius-md: 10px;
+  --lv-radius-lg: 16px;
+  --lv-radius-pill: 999px;
+
+  --lv-shadow-sm: 0 1px 3px rgba(20, 35, 27, 0.08);
+  --lv-shadow-md: 0 6px 20px rgba(20, 35, 27, 0.10);
+
+  --lv-font-display: "Fraunces", Georgia, serif;
+  --lv-font-body: "Work Sans", "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* ---------- Base ---------- */
+body {
+  font-family: var(--lv-font-body);
+  background: var(--lv-canvas);
+  color: var(--lv-ink);
+}
+
+h1, h2, h3 {
+  font-family: var(--lv-font-display);
+  color: var(--lv-ink);
+  font-weight: 600;
+}
+
+a {
+  color: var(--lv-green);
+}
+
+/* ---------- Buttons ----------
+   New shared classes for anything we actively touch. Existing bespoke
+   button selectors (#logoutBtn, .buyBtn, #searchBtn, etc.) are also
+   reskinned below so pages that aren't fully migrated yet still look
+   consistent without needing every inline style rewritten. */
+.btn {
+  font-family: var(--lv-font-body);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 18px;
+  border-radius: var(--lv-radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--lv-green);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--lv-green-deep); }
+
+.btn-secondary {
+  background: var(--lv-surface);
+  color: var(--lv-ink);
+  border-color: var(--lv-line);
+}
+.btn-secondary:hover { border-color: var(--lv-slate-soft); }
+
+.btn-danger {
+  background: var(--lv-danger);
+  color: #fff;
+}
+.btn-danger:hover { background: var(--lv-danger-deep); }
+
+.btn-sm {
+  font-size: 13px;
+  padding: 7px 12px;
+}
+
+/* Reskin existing button selectors used across the app so untouched pages
+   still inherit the palette instead of clashing with it. */
+#logoutBtn,
+.deleteBtn,
+button.deleteBtn {
+  background: var(--lv-danger) !important;
+  color: #fff !important;
+  border: none;
+  border-radius: var(--lv-radius-sm);
+  padding: 8px 16px;
+  cursor: pointer;
+}
+#logoutBtn:hover,
+.deleteBtn:hover {
+  background: var(--lv-danger-deep) !important;
+}
+
+.buyBtn,
+.addCartBtn,
+#addToCartBtn,
+#buyBtn,
+#searchBtn,
+#sendMessageBtn,
+#checkoutBtn,
+#payBtn,
+.cart-btn,
+.order-btn,
+.dashboard-btn,
+.notification-btn,
+button.shipBtn {
+  background: var(--lv-green) !important;
+  color: #fff !important;
+  border: none;
+  border-radius: var(--lv-radius-sm);
+  padding: 8px 16px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.buyBtn:hover,
+.addCartBtn:hover,
+#addToCartBtn:hover,
+#buyBtn:hover,
+#searchBtn:hover,
+#sendMessageBtn:hover,
+#checkoutBtn:hover,
+#payBtn:hover,
+.cart-btn:hover,
+.order-btn:hover,
+.dashboard-btn:hover,
+.notification-btn:hover,
+button.shipBtn:hover {
+  background: var(--lv-green-deep) !important;
+}
+
+/* ---------- Navbar (unifies the three different header colors) ---------- */
+.navbar,
+header,
+header nav,
+nav.navbar {
+  background: var(--lv-ink);
+  color: #fff;
+}
+
+.navbar a,
+header a {
+  color: #fff;
+}
+
+.logo-text,
+.logo span {
+  color: var(--lv-green-mist) !important;
+  font-family: var(--lv-font-display);
+}
+
+/* ---------- Cards ---------- */
+.card,
+.review-card,
+.profile-container,
+section,
+form.login-card,
+.login-card {
+  background: var(--lv-surface);
+  border-radius: var(--lv-radius-md);
+  box-shadow: var(--lv-shadow-sm);
+}
+
+/* ---------- Product cards ---------- */
+.product-card {
+  background: var(--lv-surface);
+  border: 1px solid var(--lv-line);
+  border-radius: var(--lv-radius-md);
+  box-shadow: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  overflow: hidden;
+}
+.product-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--lv-shadow-md);
+}
+.product-card img,
+.product-img {
+  border-radius: var(--lv-radius-sm);
+  object-fit: cover;
+}
+.product-card .price,
+.product-card strong,
+#detailPrice,
+.product-price {
+  color: var(--lv-green-deep) !important;
+}
+
+/* ---------- Reviews ---------- */
+.review-card {
+  border: 1px solid var(--lv-line);
+  border-left: 4px solid var(--lv-gold);
+}
+.stars,
+.review-stars,
+.average-rating {
+  color: var(--lv-gold) !important;
+}
+
+/* ---------- Forms ---------- */
+input, select, textarea {
+  font-family: var(--lv-font-body);
+  border: 1px solid var(--lv-line);
+  border-radius: var(--lv-radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--lv-surface);
+  color: var(--lv-ink);
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--lv-green);
+  box-shadow: 0 0 0 3px var(--lv-green-mist);
+}
+
+/* ---------- Badges / status pills ---------- */
+.badge,
+.notification-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: var(--lv-radius-pill);
+  font-family: var(--lv-font-body);
+}
+.badge-success { background: var(--lv-green-mist); color: var(--lv-green-deep); border: 1px solid var(--lv-green-mist-line); }
+.badge-warning { background: var(--lv-gold-mist); color: #8a660a; }
+.badge-danger  { background: var(--lv-danger-mist); color: var(--lv-danger); }
+.badge-neutral { background: var(--lv-canvas); color: var(--lv-slate); border: 1px solid var(--lv-line); }
+
+.notification-badge {
+  background: var(--lv-danger) !important;
+  color: #fff !important;
+}
+
+/* ---------- Highlight (scroll-to target from a notification link) ----------
+   Was only ever defined in the orphaned buyer.css (loaded by no page), so
+   this effect has been silently invisible everywhere it was already used
+   (e.g. jumping to a specific order from a notification), not just here. */
+.highlight-order {
+  border: 3px solid var(--lv-green) !important;
+  box-shadow: 0 0 15px rgba(11, 122, 61, 0.5);
+}
+
+/* ---------- Empty states ---------- */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  border: 1px dashed var(--lv-line);
+  border-radius: var(--lv-radius-md);
+  color: var(--lv-slate);
+  background: var(--lv-surface);
+}
+.empty-state .empty-glyph {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+
+/* ---------- Loading skeleton (available now; wiring it into the actual
+   data-fetch calls in app.js is a follow-up JS change, not included here) --- */
+.lv-skeleton {
+  background: linear-gradient(90deg, var(--lv-line) 25%, var(--lv-green-mist) 50%, var(--lv-line) 75%);
+  background-size: 200% 100%;
+  animation: lv-shimmer 1.6s infinite;
+  border-radius: var(--lv-radius-sm);
+}
+@keyframes lv-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lv-skeleton { animation: none; }
+}
+
+/* ---------- Toast (available now; replacing alert() calls in app.js is a
+   functionality change and is intentionally NOT done in this pass) ---------- */
+.lv-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--lv-ink);
+  color: var(--lv-canvas);
+  padding: 12px 18px;
+  border-radius: var(--lv-radius-md);
+  font-size: 14px;
+  box-shadow: var(--lv-shadow-md);
+}

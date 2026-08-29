@@ -1,38 +1,46 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
   <meta charset="UTF-8" />
-  <title>Olivia Store | Solora</title>
+  <title>Seller Dashboard | Lesovia</title>
 
-  <meta name="description" content="Shop products from Olivia Store on Solora marketplace.">
+  <meta name="description" content="Manage your store and listings on Lesovia.">
   
   <link rel="stylesheet" href="../css/seller dashboard.css" />
   <link rel="stylesheet" href="../css/footer.css">
+  <style>
+    /* Hidden until app.js confirms the correct login/role -- see revealPage() */
+    body { visibility: hidden; }
+  </style>
 </head>
 <body>
 
   <h1>Seller Dashboard</h1>
-  <nav> 
-    <button id="logoutBtn" style="background-color: hwb(0 30% 8%); color: white; padding: 10px 20px; border: none; cursor: pointer;">Logout</button>
+  <nav>
+    <button id="logoutBtn" class="btn btn-danger">Logout</button>
   </nav>
 
 
 <h2 id="currentStoreName"></h2>
 <p id="currentStoreDescription"></p>
 
-  <button onclick="window.location.href='seller-upload.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">Upload Products</button>
-    <button onclick="window.location.href='seller-messages.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">View Messages</button>
+  <button class="btn btn-secondary" onclick="window.location.href='seller-upload.html'">Upload Products</button>
+    <button class="btn btn-secondary" onclick="window.location.href='seller-messages.html'">View Messages</button>
 
-    <button onclick="window.location.href='seller-orders.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">
+    <button class="btn btn-secondary" onclick="window.location.href='seller-orders.html'">
       View Orders
     </button>
-    <button onclick="window.location.href='seller-history.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">View History</button>
+    <button class="btn btn-secondary" onclick="window.location.href='seller-history.html'">View History</button>
 
-    <button onclick="window.location.href='seller-profile.html'" style="color:white; background-color: hwb(188 17% 11%); padding: 8px 14px; border:none; cursor:hover; border-radius: 6px;">
+    <button class="btn btn-secondary" onclick="window.location.href='seller-profile.html'">
       Edit Store Profile
     </button>
 
-    <button onclick="window.location.href='seller-reviews.html'" style="color:white; background-color: hwb(188 17% 11%); cursor:hover; border-radius: 6px;">
+    <button class="btn btn-secondary" onclick="window.location.href='seller-reviews.html'">
       ⭐ View Reviews
     </button>
 
@@ -40,13 +48,7 @@
 <div class="notification-wrapper">
 <a
     href="seller-notifications.html"
-    style="
-        background:hwb(188 17% 11%);
-        color:white;
-        padding:10px 16px;
-        border-radius:8px;
-        text-decoration:none;
-    "
+    class="notification-btn"
 >
 
 🔔 Notifications
@@ -80,7 +82,7 @@
     <a href="contact.html">Contact Us</a>
   </div>
 
-  <p>&copy; 2026 Solora. All Rights Reserved.</p>
+  <p>&copy; 2026 Lesovia. All Rights Reserved.</p>
 
 </footer>
 </body>

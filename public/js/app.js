@@ -25,6 +25,7 @@ import {
   addDoc,
   query,
   where,
+  or,
   getDocs,
   deleteDoc,
   updateDoc,
@@ -203,16 +204,98 @@ const conversationId =
 
 console.log("Conversation from URL:", conversationId);
 
+// Every page that requires a specific role to view at all -- not just the
+// three main dashboards. Matched against the DECODED pathname (see
+// decodeURIComponent below) -- filenames with spaces like "seller
+// dashboard.html" are served as "%20" in location.pathname, which would
+// never match a literal-space key otherwise.
+const PAGE_ROLE = {
+  "buyer dashboard.html": "buyer",
+  "cart.html": "buyer",
+  "messages.html": "buyer",
+  "order.html": "buyer",
+  "buyer-notifications.html": "buyer",
+  "reviews.html": "buyer",
+  "seller dashboard.html": "seller",
+  "seller-upload.html": "seller",
+  "seller-orders.html": "seller",
+  "seller-messages.html": "seller",
+  "seller-profile.html": "seller",
+  "seller-history.html": "seller",
+  "seller-notifications.html": "seller",
+  "seller-reviews.html": "seller"
+  // admin.html isn't listed here -- it doesn't load app.js at all, only
+  // admin.js, which has its own equivalent guard (see admin.js).
+};
+
+function requiredRoleForPage(path) {
+  // Check longest page name first -- e.g. "seller-messages.html" must be
+  // matched before the shorter "messages.html", since the former contains
+  // the latter as a substring. Without this, sellers visiting
+  // seller-messages.html or seller-reviews.html were told they needed to
+  // be a buyer and got bounced back to their own dashboard.
+  const pages = Object.keys(PAGE_ROLE).sort((a, b) => b.length - a.length);
+
+  for (const page of pages) {
+    if (path.includes(page)) return PAGE_ROLE[page];
+  }
+
+  return null;
+}
+
+function homeForRole(role) {
+  if (role === "seller") return "seller dashboard.html";
+  if (role === "admin") return "admin.html";
+  return "buyer dashboard.html";
+}
+
+// These pages start hidden (see the inline <style> in each one's <head>)
+// specifically so there's no flash of dashboard content before this check
+// runs. This is a front-door/UX measure only -- the real protection against
+// someone bypassing it is that Firestore/Storage rules require the matching
+// role server-side regardless of what this page shows.
+function revealPage() {
+  if (document.body) document.body.style.visibility = "visible";
+}
+
 onAuthStateChanged(auth, async (user) => {
-  const currentPage = window.location.pathname;
+  // pathname comes back URL-encoded for filenames with spaces (e.g.
+  // "/seller%20dashboard.html"), which would silently fail to match
+  // PAGE_ROLE's literal-space keys -- decode before matching.
+  const currentPage = decodeURIComponent(window.location.pathname);
+  const requiredRole = requiredRoleForPage(currentPage);
 
   if (user) {
     const userDoc = await getDoc(doc(db, "users", user.uid));
-    if (!userDoc.exists()) return;
+
+    if (!userDoc.exists()) {
+      if (requiredRole) window.location.href = "login.html";
+      return;
+    }
 
     const role = userDoc.data().role;
 //looking for user without a fullname//
     const userData = userDoc.data();
+
+    // PAGE PROTECTION -- wrong role (or logged in but this page needs a
+    // role) gets sent to their own home page.
+    if (requiredRole && role !== requiredRole) {
+      window.location.href = homeForRole(role);
+      return;
+    }
+
+    // First-time seller setup redirect has to happen BEFORE revealPage(),
+    // otherwise the real seller page flashes before bouncing to the
+    // profile-setup page.
+    if (role === "seller" &&
+        !userData.storeName &&
+        !currentPage.includes("seller-profile.html")) {
+
+      window.location.href = "seller-profile.html";
+      return;
+    }
+
+    revealPage();
 
     if (!userData.fullName) {
 
@@ -232,22 +315,6 @@ onAuthStateChanged(auth, async (user) => {
 
     }
 
-    // PAGE PROTECTION
-    if (currentPage.includes("seller dashboard.html") && role !== "seller") {
-      window.location.href = "buyer dashboard.html";
-      return;
-    }
-
-    if (currentPage.includes("buyer dashboard.html") && role !== "buyer") {
-      window.location.href = "seller dashboard.html";
-      return;
-    }
-
-    if (currentPage.includes("admin.html") && role !== "admin") {
-      window.location.href = "index.html";
-      return;
-    }
-
     //  UI
     const welcome = document.getElementById("welcome");
     if (welcome) welcome.innerText = `Logged in as: ${user.email} (${role})`;
@@ -265,14 +332,6 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     if (role === "seller") {
-      // First-time seller setup
-      if (!userDoc.data().storeName &&
-          !window.location.pathname.includes("seller-profile.html")) {
-
-        window.location.href = "seller-profile.html";
-        return;
-      }
-
       loadSellerProducts();
       loadSellerOrders();
       loadSoldProducts();
@@ -284,13 +343,12 @@ onAuthStateChanged(auth, async (user) => {
 
   } else {
     //  NOT LOGGED IN
-    if (
-      currentPage.includes("buyer dashboard.html") ||
-      currentPage.includes("seller dashboard.html") ||
-      currentPage.includes("admin.html")
-    ) {
-      window.location.href = "index.html";
+    if (requiredRole) {
+      window.location.href = "login.html";
+      return;
     }
+
+    revealPage();
   }
 });
 
@@ -329,7 +387,12 @@ if (productForm) {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
-        const storageRef = ref(storage, `products/${Date.now()}_${i}_${file.name}`);
+        // Path includes the uploader's uid so Storage rules can restrict
+        // writes to the seller who owns them.
+        const storageRef = ref(
+          storage,
+          `products/${auth.currentUser.uid}/${Date.now()}_${i}_${file.name}`
+        );
         await uploadBytes(storageRef, file);
 
         const url = await getDownloadURL(storageRef);
@@ -525,8 +588,82 @@ if (typeof Stripe !== "undefined") {
 //OFC//
 let selectedProduct = null;
 
-const functionURL =
+const createPaymentIntentURL =
   "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/createPaymentIntent";
+
+const verifyPaymentURL =
+  "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/verifyPayment";
+
+/* ================= SHARED CHECKOUT (BUY NOW + CART) =================
+   The server (createPaymentIntent / verifyPayment) is the only thing that
+   ever decides the real total or marks an order "paid". This code just
+   asks the server to start a checkout, collects the card, and asks the
+   server to verify the result -- it never writes orders/inventory itself. */
+
+let currentOrderId = null;
+let currentClientSecret = null;
+let currentCheckoutMode = null; // "buyNow" | "cart"
+
+async function startCheckout(items, cartItemIds, mode) {
+  const user = auth.currentUser;
+
+  if (!user) {
+    alert("Please login first");
+    return;
+  }
+
+  if (!stripe || !card) {
+    alert("Payment is not available on this page.");
+    return;
+  }
+
+  if (currentOrderId) {
+    alert("A checkout is already in progress. Finish or cancel it first.");
+    return;
+  }
+
+  try {
+    const idToken = await user.getIdToken();
+
+    const checkoutId =
+      (window.crypto && crypto.randomUUID && crypto.randomUUID()) ||
+      `${user.uid}_${Date.now()}`;
+
+    const response = await fetch(createPaymentIntentURL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({
+        checkoutId,
+        items,
+        cartItemIds
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.error || "Unable to start checkout.");
+      return;
+    }
+
+    currentOrderId = data.orderId;
+    currentClientSecret = data.clientSecret;
+    currentCheckoutMode = mode;
+
+    const modal = document.getElementById("checkoutModal");
+    const paymentMessage = document.getElementById("payment-message");
+
+    if (paymentMessage) paymentMessage.textContent = "";
+    if (modal) modal.style.display = "block";
+
+  } catch (err) {
+    console.error(err);
+    alert("Unable to start checkout: " + err.message);
+  }
+}
 
 
 /* =================LOAD CATEGORIES ON BUYER DASHBOARD =========*/
@@ -849,23 +986,38 @@ function setupBuyButtons() {
 
 const payBtn = document.getElementById("payBtn");
 
+// Guards against a second click event that's already queued before
+// `payBtn.disabled = true` takes effect (disabling a button doesn't cancel
+// an already-dispatched click). Set synchronously, before anything async.
+let isPayInFlight = false;
+
 if(payBtn){
 
   payBtn.addEventListener("click", async () => {
 
+    if (isPayInFlight) return;
+
+    const paymentMessage = document.getElementById("payment-message");
+
+    if (!currentOrderId || !currentClientSecret) {
+      // Stale modal left open from an earlier page state (e.g. the tab was
+      // restored/back-forward-cached) -- close it instead of leaving the
+      // buyer stuck with a Pay Now button that can never work.
+      const modal = document.getElementById("checkoutModal");
+      if (modal) modal.style.display = "none";
+
+      alert("This checkout session expired. Please click Buy Now / Checkout again to restart.");
+      return;
+    }
+
+    isPayInFlight = true;
+    payBtn.disabled = true;
+    payBtn.textContent = "Processing...";
+
     try {
 
-      payBtn.disabled = true;
-      payBtn.textContent = "Processing...";
-
-      const response = await fetch(functionURL, {
-        method: "POST"
-      });
-
-      const data = await response.json();
-
       const result = await stripe.confirmCardPayment(
-        data.clientSecret,
+        currentClientSecret,
         {
           payment_method: {
             card: card
@@ -873,120 +1025,101 @@ if(payBtn){
         }
       );
 
-      if(result.error){
+      if (result.error) {
 
-        document.getElementById("payment-message").textContent =
-          result.error.message;
+        if (paymentMessage) paymentMessage.textContent = result.error.message;
 
         payBtn.disabled = false;
         payBtn.textContent = "Pay Now";
 
-      } else {
-
-        if(result.paymentIntent.status === "succeeded"){
-
-          //await addDoc(collection(db, "orders"), {
-            const orderRef = await addDoc(collection(db, "orders"), {
-              productId: selectedProduct.id,
-              sellerId: selectedProduct.sellerId,
-              userId: auth.currentUser.uid,
-              quantity: selectedProduct.quantity,
-              color: selectedProduct.color || null,
-              size: selectedProduct.size || null,
-              status: "paid",
-              createdAt: serverTimestamp()
-          });
-          
-          // Get product information
-          const productSnap = await getDoc(
-              doc(db, "products", selectedProduct.id)
-          );
-          
-          const product = productSnap.data();
-          
-          // Notify seller
-          await addDoc(collection(db, "notifications"), {
-              userId: product.sellerId,
-              type: "new_order",
-              title: "New Order Received",
-              message: `${product.name} was purchased.`,
-              link: `seller-orders.html?orderId=${orderRef.id}`,
-              read: false,
-              createdAt: serverTimestamp()
-          });
-
-        // Notify buyer
-        await addDoc(collection(db, "notifications"), {
-
-          userId: auth.currentUser.uid,
-
-          type: "order_placed",
-
-          title: "Order Confirmed",
-
-          message: `Your order for "${product.name}" has been placed successfully.`,
-
-          link: `order.html?orderId=${orderRef.id}`,
-
-          read: false,
-
-          createdAt: serverTimestamp()
-
-        });
-
-
-      // Calculate remaining stock FIRST
-      const productRef = doc(db, "products", selectedProduct.id);
-
-      const newQuantity =
-          (product.quantity || 0) - selectedProduct.quantity;
-
-      // Update product inventory
-      await updateDoc(productRef, {
-          quantity: newQuantity,
-          sold: newQuantity <= 0
-      });
-
-      // Notify seller if inventory is getting low
-      if (newQuantity <= 5 && newQuantity > 0) {
-
-          await addDoc(collection(db, "notifications"), {
-
-              userId: product.sellerId,
-
-              type: "low_stock",
-
-              title: "Low Inventory",
-
-              message: `Only ${newQuantity} ${product.name} left in stock.`,
-
-              link: `seller-dashboard.html?productId=${selectedProduct.id}`,
-
-              read: false,
-
-              createdAt: serverTimestamp()
-
-          });
-
+        return;
       }
 
-      document.getElementById("payment-message").textContent =
-          "Payment Successful!";
+      if (result.paymentIntent.status !== "succeeded") {
 
-      document.getElementById("checkoutModal").style.display = "none";
-
-      window.location.href = `order.html?orderId=${orderRef.id}`;
-
+        if (paymentMessage) {
+          paymentMessage.textContent =
+            "Payment was not completed. Status: " + result.paymentIntent.status;
         }
 
+        payBtn.disabled = false;
+        payBtn.textContent = "Pay Now";
+
+        return;
       }
 
-    } catch(error){
+      // The client's own view of the payment is never trusted for
+      // fulfillment -- ask the server to independently verify it with
+      // Stripe before anything is written as "paid".
+      const idToken = await auth.currentUser.getIdToken();
 
-      console.log(error);
+      const verifyResponse = await fetch(verifyPaymentURL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ orderId: currentOrderId })
+      });
 
-      document.getElementById("payment-message").textContent =
-        error.message;
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok || !verifyData.success) {
+
+        if (paymentMessage) {
+          paymentMessage.textContent =
+            "We couldn't confirm your payment (" +
+            (verifyData.status || verifyData.error || "unknown error") +
+            "). Please try again or contact support.";
+        }
+
+        payBtn.disabled = false;
+        payBtn.textContent = "Pay Now";
+
+        return;
+      }
+
+      if (paymentMessage) paymentMessage.textContent = "Payment Successful!";
+
+      const modal = document.getElementById("checkoutModal");
+      if (modal) modal.style.display = "none";
+
+      const finishedOrderIds = verifyData.orderIds || [];
+      const finishedMode = currentCheckoutMode;
+
+      currentOrderId = null;
+      currentClientSecret = null;
+      currentCheckoutMode = null;
+
+      payBtn.disabled = false;
+      payBtn.textContent = "Pay Now";
+
+      if (finishedMode === "cart") {
+
+        alert("Checkout successful!");
+
+        if (typeof loadCart === "function") loadCart();
+        if (typeof loadProducts === "function") loadProducts();
+        if (typeof loadMyOrders === "function") loadMyOrders();
+
+      } else if (finishedOrderIds[0]) {
+
+        window.location.href = `order.html?orderId=${finishedOrderIds[0]}`;
+
+      }
+
+    } catch (error) {
+
+      console.error(error);
+
+      if (paymentMessage) paymentMessage.textContent = error.message;
+
+      payBtn.disabled = false;
+      payBtn.textContent = "Pay Now";
+
+    } finally {
+
+      isPayInFlight = false;
 
     }
 
@@ -1003,6 +1136,15 @@ if(closeCheckout){
   closeCheckout.addEventListener("click", () => {
 
     document.getElementById("checkoutModal").style.display = "none";
+
+    // Cancelling just abandons the pending order server-side (it stays
+    // "pending_payment" and is never finalized) -- nothing to undo here.
+    currentOrderId = null;
+    currentClientSecret = null;
+    currentCheckoutMode = null;
+
+    const paymentMessage = document.getElementById("payment-message");
+    if (paymentMessage) paymentMessage.textContent = "";
 
   });
 
@@ -1147,6 +1289,14 @@ function loadSellerProducts() {
   const sellerProducts = document.getElementById("sellerProducts");
   if (!sellerProducts || !auth.currentUser) return;
 
+  const highlightProductId =
+    new URLSearchParams(window.location.search).get("highlightProduct");
+
+  // Only scroll/highlight on the first render -- this listener re-fires on
+  // every product change, and we don't want to keep yanking the seller back
+  // to this card every time something unrelated updates.
+  let hasHighlighted = false;
+
   const q = query(
     collection(db, "products"),
     where("sellerId", "==", auth.currentUser.uid)
@@ -1167,6 +1317,7 @@ function loadSellerProducts() {
     if (quantity <= 0) return;
 
       const productDiv = document.createElement("div");
+      productDiv.id = `product-${docSnap.id}`;
 
       const images = product.images || [product.imageURL];
 
@@ -1219,6 +1370,19 @@ function loadSellerProducts() {
     }
 
       sellerProducts.appendChild(productDiv);
+
+      if (!hasHighlighted && docSnap.id === highlightProductId) {
+        hasHighlighted = true;
+
+        setTimeout(() => {
+          productDiv.scrollIntoView({ behavior: "smooth", block: "center" });
+          productDiv.classList.add("highlight-order");
+
+          setTimeout(() => {
+            productDiv.classList.remove("highlight-order");
+          }, 5000);
+        }, 300);
+      }
     });
   });
 }
@@ -1624,20 +1788,16 @@ if (buyBtn) {
 
     buyBtn.addEventListener("click", async () => {
 
-        console.log("Buy button clicked");
-
         const productSnap = await getDoc(
             doc(db, "products", productId)
         );
 
         if (!productSnap.exists()) {
-            console.log("Product not found");
+            alert("Product not found.");
             return;
         }
 
         const product = productSnap.data();
-
-        console.log(product);
 
         if (
             product.colors &&
@@ -1661,20 +1821,29 @@ if (buyBtn) {
             document.getElementById("detailQuantity").value
         );
 
-        selectedProduct = {
-            id: productId,
-            sellerId: product.sellerId,
-            quantity,
-            color: selectedColor,
-            size: selectedSize
-        };
+        if (!Number.isInteger(quantity) || quantity < 1) {
+            alert("Please enter a valid quantity.");
+            return;
+        }
 
-        console.log(selectedProduct);
+        // The server re-fetches this product's real price/stock from
+        // Firestore -- this is just what the buyer says they want to buy.
+        buyBtn.disabled = true;
 
-        const modal = document.getElementById("checkoutModal");
-        console.log(modal);
+        await startCheckout(
+            [
+                {
+                    productId,
+                    quantity,
+                    color: selectedColor,
+                    size: selectedSize
+                }
+            ],
+            [],
+            "buyNow"
+        );
 
-        modal.style.display = "block";
+        buyBtn.disabled = false;
 
     });
 
@@ -1733,6 +1902,12 @@ let selectedColor = null;
 
 let selectedSize = null;
 
+// Cart contents cached client-side purely for the checkbox UI / running
+// total display -- checkout still sends only productId/quantity to the
+// server, which looks up the real price itself.
+let cartData = [];
+let selectedCartItemIds = new Set();
+
 async function loadCart() {
   const cartDiv = document.getElementById("cartItems");
   if (!cartDiv || !auth.currentUser) return;
@@ -1741,6 +1916,8 @@ async function loadCart() {
   const snapshot = await getDocs(q);
 
   cartDiv.innerHTML = "";
+  cartData = [];
+  selectedCartItemIds = new Set();
 
   for (const docSnap of snapshot.docs) {
     const cartItem = docSnap.data();
@@ -1750,8 +1927,28 @@ async function loadCart() {
     if (!productSnap.exists()) continue;
     const product = productSnap.data();
 
+    cartData.push({
+      cartItemId: docSnap.id,
+      productId: cartItem.productId,
+      product,
+      quantity: cartItem.quantity,
+      color: cartItem.color || null,
+      size: cartItem.size || null
+    });
+
+    // Nothing is pre-selected -- the buyer picks what to check out,
+    // either one at a time or via "Select All".
+
     cartDiv.innerHTML += `
       <div class="cart-item">
+        <label>
+          <input
+            type="checkbox"
+            class="cartItemCheckbox"
+            onchange="toggleCartItem('${docSnap.id}', this.checked)"
+          >
+          Select
+        </label>
         <img src="${product.images ? product.images[0] : product.imageURL}" class="product-img" width=120>
         <p>${product.name}</p>
         <p><strong>Color:</strong> ${cartItem.color}</p>
@@ -1764,6 +1961,67 @@ async function loadCart() {
       <hr>
     `;
   }
+
+  updateSelectAllCheckbox();
+  updateCartTotal();
+}
+
+// Keep an item's selection in sync with its checkbox, and recompute the
+// running total shown to the buyer (checkout itself is unaffected --
+// the server always recomputes the real total from Firestore).
+window.toggleCartItem = function (cartItemId, checked) {
+  if (checked) {
+    selectedCartItemIds.add(cartItemId);
+  } else {
+    selectedCartItemIds.delete(cartItemId);
+  }
+
+  updateSelectAllCheckbox();
+  updateCartTotal();
+};
+
+function updateSelectAllCheckbox() {
+  const selectAllCheckbox = document.getElementById("selectAllCheckbox");
+  if (!selectAllCheckbox) return;
+
+  selectAllCheckbox.checked =
+    cartData.length > 0 && selectedCartItemIds.size === cartData.length;
+}
+
+function updateCartTotal() {
+  const totalEl = document.getElementById("cartTotal");
+  if (!totalEl) return;
+
+  const total = cartData
+    .filter(item => selectedCartItemIds.has(item.cartItemId))
+    .reduce(
+      (sum, item) => sum + (Number(item.product.price) || 0) * item.quantity,
+      0
+    );
+
+  totalEl.textContent = total.toFixed(2);
+}
+
+const selectAllCheckbox = document.getElementById("selectAllCheckbox");
+
+if (selectAllCheckbox) {
+
+  selectAllCheckbox.addEventListener("change", () => {
+
+    if (selectAllCheckbox.checked) {
+      cartData.forEach(item => selectedCartItemIds.add(item.cartItemId));
+    } else {
+      selectedCartItemIds.clear();
+    }
+
+    document.querySelectorAll(".cartItemCheckbox").forEach(cb => {
+      cb.checked = selectAllCheckbox.checked;
+    });
+
+    updateCartTotal();
+
+  });
+
 }
 //New Function For Colors//
 function loadColors(colors){
@@ -1862,165 +2120,43 @@ if (checkoutBtn) {
 
   checkoutBtn.addEventListener("click", async () => {
 
-    const q = query(
-      collection(db, "carts"),
-      where("userId", "==", auth.currentUser.uid)
-    );
+    const user = auth.currentUser;
 
-    const snapshot = await getDocs(q);
+    if (!user) {
+      alert("Please login first");
+      return;
+    }
 
-    if (snapshot.empty) {
+    if (cartData.length === 0) {
       alert("Your cart is empty!");
       return;
     }
 
-    for (const docSnap of snapshot.docs) {
+    const selectedItems = cartData.filter(item =>
+      selectedCartItemIds.has(item.cartItemId)
+    );
 
-      const cartItem = docSnap.data();
-
-      // Get product info
-      const productSnap = await getDoc(
-        doc(db, "products", cartItem.productId)
-      );
-
-      if (!productSnap.exists()) continue;
-
-      const product = productSnap.data();
-
-      // Create order
-    /*  await addDoc(collection(db, "orders"), {
-
-        productId: cartItem.productId,
-
-        sellerId: product.sellerId,
-
-        userId: auth.currentUser.uid,
-
-        quantity: cartItem.quantity,
-
-        color: cartItem.color || null,
-
-        size: cartItem.size || null,
-
-        price: product.price,
-
-        status: "pending",
-
-        createdAt: serverTimestamp()
-
-      });*/
-    const orderRef = await addDoc(collection(db, "orders"), {
-
-        productId: cartItem.productId,
-
-        sellerId: product.sellerId,
-
-        userId: auth.currentUser.uid,
-
-        quantity: cartItem.quantity,
-
-        color: cartItem.color || null,
-
-        size: cartItem.size || null,
-
-        price: product.price,
-
-        status: "paid",
-
-        createdAt: serverTimestamp()
-
-    });
-
-    // =========================
-    // CREATE SELLER NOTIFICATION
-    // =========================
-
-    await addDoc(collection(db, "notifications"), {
-
-      userId: product.sellerId,
-
-      type: "new_order",
-
-      title: "New Order Received",
-
-      message: `${product.name} was purchased.`,
-
-      link: `seller-orders.html?orderId=${orderRef.id}`,
-
-      read: false,
-
-      createdAt: serverTimestamp()
-
-    });
-
-      // Mark product sold
-      /*await updateDoc(
-        doc(db, "products", cartItem.productId),
-        {
-          sold: true
-        }
-      );*/
-    // Update inventory quantity
-
-    const currentQuantity =
-      product.quantity ?? 1;
-
-    const newQuantity =
-      currentQuantity - cartItem.quantity;
-
-    await updateDoc(
-      doc(db, "products", cartItem.productId),
-    {
-        quantity: Math.max(0, newQuantity)
-    }
-  );
-
-    // ===========================
-    // LOW INVENTORY NOTIFICATION
-    // ===========================
-
-  if (newQuantity <= 5 && newQuantity > 0) {
-
-    await addDoc(collection(db, "notifications"), {
-
-      userId: product.sellerId,
-
-      type: "low_stock",
-
-      title: "Low Inventory",
-
-      message: `Only ${newQuantity} ${product.name} left in stock.`,
-
-      link:`seller-dashboard.html?productId=${productId}`,
-
-      read: false,
-
-      createdAt: serverTimestamp()
-
-    });
-
+    if (selectedItems.length === 0) {
+      alert("Please select at least one product to checkout.");
+      return;
     }
 
+    // Just describe what's selected -- the server looks up the real
+    // price/stock for each productId itself, it does not trust this.
+    const items = selectedItems.map(item => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      color: item.color,
+      size: item.size
+    }));
 
+    const cartItemIds = selectedItems.map(item => item.cartItemId);
 
-      // Remove from cart
-      await deleteDoc(
-        doc(db, "carts", docSnap.id)
-      );
-    };
+    checkoutBtn.disabled = true;
 
-    alert("Checkout successful!");
+    await startCheckout(items, cartItemIds, "cart");
 
-    loadCart();
-
-
-    if (typeof loadProducts === "function") {
-      loadProducts();
-    }
-
-    if (typeof loadMyOrders === "function") {
-      loadMyOrders();
-    }
+    checkoutBtn.disabled = false;
 
   });
 
@@ -2711,9 +2847,17 @@ async function loadSellerMessages() {
 
   if (!msgList || !auth.currentUser) return;
 
+  // Scoped to this user as sender OR receiver -- a Firestore rule that
+  // enforces message privacy will reject an unfiltered collection scan,
+  // so this has to be a real query, not a client-side filter.
+  // No orderBy here (avoids needing a composite index for the or() + sort
+  // combination) -- messages are already re-sorted client-side below.
   const q = query(
     collection(db, "messages"),
-    orderBy("createdAt", "asc")
+    or(
+      where("senderId", "==", auth.currentUser.uid),
+      where("receiverId", "==", auth.currentUser.uid)
+    )
   );
 
   const snapshot = await getDocs(q);
@@ -2930,7 +3074,7 @@ async function loadSellerMessages() {
 async function loadBuyerMessages() {
   const msgList = document.getElementById("buyerMessages");
   if (!msgList || !auth.currentUser) return;
-
+//Line that I revert//
   const snapshot = await getDocs(collection(db, "messages"));
   msgList.innerHTML = "";
 

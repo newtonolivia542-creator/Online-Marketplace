@@ -1,13 +1,11 @@
 /* ================= GLOBAL ================= */
+/* font/background/color come from lesovia.css */
 body {
-  font-family: 'Segoe UI', sans-serif;
-  background: #f5f7fb;
   margin: 0;
-  color: #1e293b;
 }
 
 h1 {
-  background: #0f172a;
+  background: var(--lv-ink, #14231B);
   color: white;
   padding: 20px;
   margin: 0;
@@ -19,7 +17,7 @@ h2, h3 {
 
 /* ================= NAV ================= */
 nav {
-  background: #0f172a;
+  background: var(--lv-ink, #14231B);
   padding: 10px 20px;
 }
 
@@ -77,20 +75,25 @@ button:hover {
 
 /* Submit button */
 form button {
-  background: #6366f1;
+  background: var(--lv-green, #6366f1);
   color: white;
   width: 100%;
 }
+form button:hover {
+  background: var(--lv-green-deep, #4f46e5);
+}
 
-/* Edit button */
-button:nth-of-type(1) {
-  background: #6366f1;
+/* Edit / Delete buttons inside a product card's .btn-group specifically --
+   this used to be a bare button:nth-of-type() with no scoping, which
+   silently painted the 1st/2nd <button> ANYWHERE on the page (including
+   unrelated dashboard nav buttons) purple/red. */
+.btn-group button:nth-of-type(1) {
+  background: var(--lv-green, #6366f1);
   color: white;
 }
 
-/* Delete button */
-button:nth-of-type(2) {
-  background: #ef4444;
+.btn-group button:nth-of-type(2) {
+  background: var(--lv-danger, #ef4444);
   color: white;
 }
 
@@ -228,7 +231,7 @@ button:nth-of-type(2) {
 
 /* HEADER FIX */
 .navbar {
-  background: #1e3a8a;
+  background: var(--lv-ink, #14231B);
   color: white;
   padding: 15px 20px;
   display: flex;

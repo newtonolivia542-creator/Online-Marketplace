@@ -36,6 +36,7 @@ exports.createPaymentIntent = onRequest(
 );
 */
 const { onRequest } = require("firebase-functions/v2/https");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const logger = require("firebase-functions/logger");
 
 const Stripe = require("stripe");
@@ -717,6 +718,50 @@ Return ONLY valid JSON. No explanations, no markdown.
 );
 
 // =================================
+// BRANDED EMAIL SHELL
+// =================================
+// Shared header/footer wrapper so every transactional email looks like it
+// came from the same product, not a bare unstyled system message. Built
+// with inline styles throughout, since email clients strip <style> blocks
+// and external stylesheets. The header includes both the mark image and
+// the text wordmark -- most clients (Gmail, Outlook) block remote images
+// by default until the user clicks "show images", so the text keeps the
+// brand visible even before that happens; the image just adds to it once
+// images load.
+function brandedEmailShell(bodyHtml) {
+  return `
+<div style="background:#F6F8F6;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:560px;margin:auto;background:#FFFFFF;border-radius:10px;overflow:hidden;border:1px solid #E2E8E4;">
+
+    <div style="background:#14231B;padding:24px 30px;">
+      <img
+        src="https://lesovia.com/images/lesovia-touch-icon.png"
+        width="32"
+        height="32"
+        alt="Lesovia"
+        style="display:inline-block;vertical-align:middle;margin-right:10px;border:0;"
+      >
+      <span style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:bold;color:#FFFFFF;letter-spacing:0.5px;vertical-align:middle;">
+        Lesovia
+      </span>
+    </div>
+
+    <div style="padding:30px;color:#14231B;line-height:1.5;">
+      ${bodyHtml}
+    </div>
+
+    <div style="padding:20px 30px;border-top:1px solid #E2E8E4;">
+      <p style="color:#8A968F;font-size:12px;margin:0;">
+        © 2026 Lesovia. All Rights Reserved.
+      </p>
+    </div>
+
+  </div>
+</div>
+  `;
+}
+
+// =================================
 // REAL EMAIL VERIFICATION FUNCTION
 // =================================
 
@@ -767,11 +812,8 @@ Return ONLY valid JSON. No explanations, no markdown.
 
           subject: "Verify your Lesovia account",
 
-          html: `
-
-      <div style="font-family:Arial;padding:30px;max-width:600px;margin:auto;">
-
-      <h1>Welcome to Lesovia!</h1>
+          html: brandedEmailShell(`
+      <h1 style="font-family:Georgia,'Times New Roman',serif;color:#14231B;margin-top:0;">Welcome to Lesovia!</h1>
 
       <p>Hello ${fullName || ""},</p>
 
@@ -783,17 +825,18 @@ Return ONLY valid JSON. No explanations, no markdown.
         Please verify your email address before logging in.
       </p>
 
-      <p style="margin:40px 0;">
+      <p style="margin:40px 0;text-align:center;">
 
       <a
       href="${verificationLink}"
       style="
-        background:#1a73e8;
-        color:white;
+        background:#0B7A3D;
+        color:#ffffff;
         padding:15px 30px;
         text-decoration:none;
         border-radius:6px;
         font-weight:bold;
+        display:inline-block;
       ">
         Verify My Email
       </a>
@@ -804,21 +847,10 @@ Return ONLY valid JSON. No explanations, no markdown.
         If the button doesn't work, copy this link:
       </p>
 
-      <p>
-
+      <p style="word-break:break-all;color:#5B6B62;">
       ${verificationLink}
-
       </p>
-
-      <hr>
-
-      <p style="color:#777;">
-      © 2026 Lesovia
-      </p>
-
-      </div>
-
-          `,
+          `),
 
         });
         logger.info("Resend response:", emailResult);
@@ -896,10 +928,8 @@ exports.sendPasswordResetEmail = onRequest(
           to: email,
           subject: "Reset your Lesovia password",
 
-          html: `
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:30px;">
-
-<h1 style="color:#0b7a3d;">Reset Your Password</h1>
+          html: brandedEmailShell(`
+<h1 style="font-family:Georgia,'Times New Roman',serif;color:#14231B;margin-top:0;">Reset Your Password</h1>
 
 <p>Hello,</p>
 
@@ -916,7 +946,7 @@ If you requested this change, click the button below.
 <a
 href="${resetLink}"
 style="
-background:#0b7a3d;
+background:#0B7A3D;
 color:#ffffff;
 padding:15px 30px;
 text-decoration:none;
@@ -933,15 +963,7 @@ Reset Password
 If you didn't request a password reset, you can safely ignore this email.
 Your password will remain unchanged.
 </p>
-
-<hr>
-
-<p style="color:#777;">
-© 2026 Lesovia
-</p>
-
-</div>
-`,
+`),
         });
 
         logger.info("Password reset email:", emailResult);
@@ -963,6 +985,104 @@ Your password will remain unchanged.
       res.status(500).send({
         error: error.message,
       });
+    }
+  }
+);
+
+// =================================
+// EMAIL COPY OF EVERY IN-APP NOTIFICATION
+// =================================
+// Every notification -- new order, shipped, delivered, new message, low
+// stock, a review -- is written the same way, to the same "notifications"
+// collection, for both buyers and sellers. Rather than adding an email send
+// at each of those call sites (and forgetting the next one someone adds),
+// this fires once for every notification document as it's created and
+// mails a copy to whoever it's for, with a link straight back to the page
+// the in-app notification itself would have opened.
+exports.sendNotificationEmail = onDocumentCreated(
+  {
+    document: "notifications/{notificationId}",
+    secrets: ["RESEND_API_KEY", "APP_URL"],
+  },
+  async (event) => {
+    try {
+      const notification = event.data && event.data.data();
+
+      if (!notification || !notification.userId) {
+        return;
+      }
+
+      const userSnap = await db.collection("users").doc(notification.userId).get();
+
+      if (!userSnap.exists) {
+        return;
+      }
+
+      const userData = userSnap.data();
+
+      if (!userData.email) {
+        return;
+      }
+
+      const resend = new Resend(process.env.RESEND_API_KEY);
+
+      // APP_URL is set to the login page (the right continue-URL for the
+      // verify/reset emails above), not the bare origin -- take just the
+      // protocol+host out of it rather than gluing this link onto the end
+      // of "/login.html", which produced "/login.html/seller-orders.html".
+      let origin = "";
+      try {
+        origin = new URL(process.env.APP_URL).origin;
+      } catch (_) {
+        logger.error("APP_URL is not a valid URL:", process.env.APP_URL);
+      }
+
+      const targetUrl = notification.link
+        ? `${origin}/${notification.link}`
+        : origin;
+
+      const emailResult = await resend.emails.send({
+        from: "Lesovia <no-reply@lesovia.com>",
+        to: userData.email,
+        subject: notification.title || "New notification from Lesovia",
+        html: brandedEmailShell(`
+      <h1 style="font-family:Georgia,'Times New Roman',serif;color:#14231B;margin-top:0;">${notification.title || "New notification"}</h1>
+
+      <p>Hello ${userData.fullName || ""},</p>
+
+      <p>${notification.message || ""}</p>
+
+      <p style="margin:40px 0;text-align:center;">
+
+      <a
+      href="${targetUrl}"
+      style="
+        background:#0B7A3D;
+        color:#ffffff;
+        padding:15px 30px;
+        text-decoration:none;
+        border-radius:6px;
+        font-weight:bold;
+        display:inline-block;
+      ">
+        View in Lesovia
+      </a>
+
+      </p>
+
+      <p style="color:#5B6B62;font-size:13px;">
+      If you weren't expecting this, you can safely ignore this email.
+      </p>
+        `),
+      });
+
+      logger.info("Notification email sent:", emailResult);
+
+    } catch (error) {
+      // A failed email should never be treated as a failed notification --
+      // the in-app notification already exists and this is best-effort on
+      // top of it, so log and move on rather than throwing.
+      logger.error("Failed to send notification email:", error);
     }
   }
 );

@@ -1,12 +1,16 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/lesovia.css">
-  <title>Admin Dashboard</title>
+  <meta charset="UTF-8">
+  <title>Users &amp; Product Lists | Lesovia Admin</title>
   <link rel="stylesheet" href="../css/admin.css">
+  <link rel="icon" type="image/svg+xml" href="../images/lesovia-mark.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="../images/lesovia-favicon-32.png">
+  <link rel="apple-touch-icon" href="../images/lesovia-touch-icon.png">
   <style>
     /* Hidden until app.js confirms the correct login/role -- see revealPage() */
     body { visibility: hidden; }
@@ -14,16 +18,47 @@
 </head>
 <body>
 
-<h1>Admin Control Panel</h1>
+<h1>Users &amp; Product Lists</h1>
 <button id="logoutBtn">Logout</button>
-<button onclick="window.location.href='admin.html'">Back</button>
+<button class="btn btn-secondary admin-back-btn" onclick="window.location.href='admin.html'">Back</button>
 
+<div class="admin-stat-badge">Active Users (last 24h): <span id="activeCount">0</span></div>
 
-    <!-- Users will be loaded here -->
-  </tbody>
+<h2>All Users</h2>
+
+<input
+  type="text"
+  id="userSearch"
+  class="admin-search-input"
+  placeholder="Search users by email or role..."
+>
+
+<table id="userList">
+  <thead>
+    <tr>
+      <th>Count</th>
+      <th>Email</th>
+      <th>Role</th>
+      <th>Date Created</th>
+      <th>Last Login</th>
+      <th>Status</th>
+      <th>Ban/Unban</th>
+      <th>Ban Status</th>
+      <th>Ban Reason</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
 </table>
 
 <h2>All Products</h2>
+
+<input
+  type="text"
+  id="productListSearch"
+  class="admin-search-input"
+  placeholder="Search products by name or seller..."
+>
+
 <table>
   <thead>
     <tr>
@@ -32,13 +67,12 @@
       <th>Name</th>
       <th>Price</th>
       <th>Seller</th>
-      <th>Action</th>
       <th>Uploaded At</th>
+      <th>Action</th>
     </tr>
   </thead>
   <tbody id="productList"></tbody>
 </table>
-
 
 <script type="module" src="../js/admin.js"></script>
 </body>

@@ -180,10 +180,16 @@ header a {
   color: #fff;
 }
 
+/* !important on all four here so this one definition wins over whatever
+   size/weight each page's own stylesheet happened to set on ".logo-text"
+   -- that per-page drift (22px in one place, 24px in another, 32px in a
+   third) is exactly why the wordmark looked different on every page. */
 .logo-text,
 .logo span {
   color: var(--lv-green-mist) !important;
-  font-family: var(--lv-font-display);
+  font-family: var(--lv-font-display) !important;
+  font-size: 28px !important;
+  font-weight: 600 !important;
 }
 
 /* ---------- Cards ---------- */

@@ -196,12 +196,20 @@ if (loginForm) {
       if (userDoc.exists()) {
         const role = userDoc.data().role;
 
-        if (role === "seller") {
-          window.location.href = "seller dashboard.html";
-        } else if (role === "buyer") {
-          window.location.href = "buyer dashboard.html";
-        } else if (role === "admin") {
-          window.location.href = "admin.html";
+        // If we got here via the page-role gate redirecting an unauthenticated
+        // visitor (e.g. clicking a notification-email link while signed out),
+        // send them back to that exact page instead of just their dashboard --
+        // but only if it's actually a page their role is allowed on.
+        const redirectParam =
+          new URLSearchParams(window.location.search).get("redirect");
+
+        const redirectTarget =
+          redirectParam ? decodeURIComponent(redirectParam) : null;
+
+        if (redirectTarget && requiredRoleForPage(redirectTarget) === role) {
+          window.location.href = redirectTarget;
+        } else {
+          window.location.href = homeForRole(role);
         }
       }
     } catch (err) {
@@ -283,7 +291,10 @@ onAuthStateChanged(auth, async (user) => {
     const userDoc = await getDoc(doc(db, "users", user.uid));
 
     if (!userDoc.exists()) {
-      if (requiredRole) window.location.href = "login.html";
+      if (requiredRole) {
+        const redirectTarget = encodeURIComponent(currentPage + window.location.search);
+        window.location.href = `login.html?redirect=${redirectTarget}`;
+      }
       return;
     }
 
@@ -325,13 +336,15 @@ onAuthStateChanged(auth, async (user) => {
           }
         );
 
+        userData.fullName = fullName;
+
       }
 
     }
 
     //  UI
     const welcome = document.getElementById("welcome");
-    if (welcome) welcome.innerText = `Logged in as: ${user.email} (${role})`;
+    if (welcome) welcome.innerText = `Welcome, ${userData.fullName || user.email}`;
 
     const logoutBtn = document.getElementById("logoutBtn");
     if (logoutBtn) logoutBtn.style.display = "block";
@@ -358,7 +371,8 @@ onAuthStateChanged(auth, async (user) => {
   } else {
     //  NOT LOGGED IN
     if (requiredRole) {
-      window.location.href = "login.html";
+      const redirectTarget = encodeURIComponent(currentPage + window.location.search);
+      window.location.href = `login.html?redirect=${redirectTarget}`;
       return;
     }
 

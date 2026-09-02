@@ -68,6 +68,7 @@ onAuthStateChanged(auth, async (user) => {
   wireAdminSearch("adminSearch", "#adminList tr");
   wireAdminSearch("orderSearch", "#allOrders tr");
   wireAdminSearch("userSearch", "#userList tbody tr");
+  wireAdminSearch("productListSearch", "#productList tr");
   wireAdminSearch("reviewSearch", "#sellerReviewsList .admin-seller-section");
 });
 

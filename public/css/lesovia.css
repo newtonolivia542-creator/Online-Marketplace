@@ -175,8 +175,13 @@ nav.navbar {
   color: #fff;
 }
 
-.navbar a,
-header a {
+/* :not(.btn) so this doesn't fight a button's own color -- a plain nav
+   link (no .btn class) should default to white on this dark background,
+   but something like ".btn-secondary" (white background, dark text) sets
+   its own color on purpose and was losing that fight on cart/messages/
+   order.html, rendering as invisible white-on-white text. */
+.navbar a:not(.btn),
+header a:not(.btn) {
   color: #fff;
 }
 

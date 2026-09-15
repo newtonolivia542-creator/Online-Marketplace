@@ -154,15 +154,19 @@
   
   <!-- Page Content -->
 
-<div id="footer"></div>
+<footer class="site-footer">
 
-<script>
-fetch("footer.html")
-  .then(response => response.text())
-  .then(data => {
-    document.getElementById("footer").innerHTML = data;
-  });
-</script>
+  <div class="footer-links">
+    <a href="terms.html">Terms of Service</a>
+    <a href="privacy.html">Privacy Policy</a>
+    <a href="seller-agreement.html">Seller Agreement</a>
+    <a href="about.html">About Us</a>
+    <a href="contact.html">Contact Us</a>
+  </div>
+
+  <p>&copy; 2026 Lesovia. All Rights Reserved.</p>
+
+</footer>
 
   <script type="module" src="../js/app.js"></script>
 

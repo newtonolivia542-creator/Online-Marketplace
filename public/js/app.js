@@ -3556,13 +3556,30 @@ function renderMessageAttachments(attachments) {
 }
 
 
-async function loadSellerMessages() {
-  const msgList = document.getElementById("sellerMessages");
+// Per-role (seller/buyer) in-memory index of each conversation's messages
+// and product info, built by renderMessagingUI and read back by
+// showConversation -- this is what lets clicking a conversation in the
+// list open its thread instantly, without re-querying Firestore.
+const messagingState = {
+  seller: { conversations: {}, activeId: null },
+  buyer: { conversations: {}, activeId: null },
+};
+
+// Shared by loadSellerMessages/loadBuyerMessages: queries this user's
+// messages, groups them into conversations, and renders the WhatsApp-style
+// conversation LIST (photo, product name, last-message time only -- the
+// full thread only renders once a conversation is clicked, in
+// showConversation below). The query and grouping logic here is unchanged
+// from before this redesign; only how each conversation is turned into
+// markup is different.
+async function renderMessagingUI(role) {
+  const listId = role === "seller" ? "sellerMessages" : "buyerMessages";
+  const msgList = document.getElementById(listId);
 
   if (!msgList || !auth.currentUser) return;
 
-  // If we arrived here from a "New Message" notification link, jump to and
-  // highlight that specific conversation once it's rendered below.
+  // If we arrived here from a "New Message" notification link, open that
+  // specific conversation once the list below is built.
   const targetConversationId =
     new URLSearchParams(window.location.search).get("conversationId");
 
@@ -3581,8 +3598,6 @@ async function loadSellerMessages() {
 
   const snapshot = await getDocs(q);
 
-  msgList.innerHTML = "";
-
   const conversations = {};
 
   snapshot.forEach(docSnap => {
@@ -3594,6 +3609,10 @@ async function loadSellerMessages() {
     ) {
       return;
     }
+
+    // The buyer view has always dropped productId-less messages entirely
+    // (the seller view never did) -- preserved exactly as it was.
+    if (role === "buyer" && !msg.productId) return;
 
     const convoId = msg.conversationId;
 
@@ -3618,7 +3637,9 @@ async function loadSellerMessages() {
     return latestB - latestA;
   });
 
-  // Render conversations
+  msgList.innerHTML = "";
+  messagingState[role].conversations = {};
+
   for (const msgs of convoList) {
 
     const visibleMsgs = msgs.filter(
@@ -3637,406 +3658,231 @@ async function loadSellerMessages() {
     const firstMsg = visibleMsgs[0];
 
     let product = {};
-    
+
     if (firstMsg.productId) {
 
       try {
-    
+
         const productDoc = await getDoc(
           doc(db, "products", firstMsg.productId)
         );
-    
+
         if (!productDoc.exists()) {
           continue; // skip this conversation entirely
         }
-    
+
         product = productDoc.data();
-    
+
       } catch (err) {
-    
+
         console.warn(
           "Bad productId:",
           firstMsg.productId
         );
-    
+
         continue;
       }
     }
 
-    
+    messagingState[role].conversations[convoId] = { visibleMsgs, product, firstMsg };
 
-    let chatHTML = "";
+    const lastMsg = visibleMsgs[visibleMsgs.length - 1];
 
-    visibleMsgs.forEach(msg => {
-
-      const isMe =
-        msg.senderId === auth.currentUser.uid;
-
-      const displayName =
-        isMe
-          ? "You"
-          : (msg.senderName || "Unknown User");
-
-      const time = msg.createdAt
-        ? new Date(
-            msg.createdAt.seconds * 1000
-          ).toLocaleString()
-        : "";
-
-      chatHTML += `
-        <div style="
-          background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-          text-align:${isMe ? 'right' : 'left'};
-          margin:8px 0;
-          padding:12px;
-          border-radius:12px;
-        ">
-
-          <div style="
-            font-weight:bold;
-            margin-bottom:6px;
-          ">
-            ${displayName}
-          </div>
-
-          <div>
-            ${escapeHtml(msg.text)}
-
-            <div>${renderMessageAttachments(msg.attachments)}</div>
-
-            <div class="message-status">
-
-            ${msg.isRead
-                ? "💙 Read"
-
-                : msg.delivered
-                    ? "✔✔ Delivered"
-
-                    : "✔ Sent"}
-
-          </div>
-
-          <small style="
-            color:gray;
-            font-size:10px;
-          ">
-            ${time}
-          </small>
-
-        </div>
-      `;
-    });
+    const lastTime = lastMsg.createdAt
+      ? new Date(lastMsg.createdAt.seconds * 1000).toLocaleString()
+      : "";
 
     const productImage =
       product.images?.[0] ||
       product.imageURL ||
       "";
 
+    const isActive = messagingState[role].activeId === convoId;
+
     msgList.innerHTML += `
-      <li id="conversation-${convoId}" style="
-        margin-bottom:20px;
-        border:1px solid #ccc;
-        padding:10px;
-      ">
-
-        <img
-          src="${productImage}"
-          width="80"
-        ><br>
-
-        <strong>
-          ${product.name || "Unknown Product"}
-        </strong>
-
-        <div class="chat-box">
-          ${chatHTML}
+      <div
+        class="conversation-row${isActive ? ' active' : ''}"
+        id="conv-row-${role}-${convoId}"
+        onclick="showConversation('${role}', '${convoId}')"
+      >
+        <img src="${productImage}" alt="">
+        <div class="conversation-row-info">
+          <div class="conv-name">${escapeHtml(product.name) || "Unknown Product"}</div>
+          <div class="conv-time">${lastTime}</div>
         </div>
-
-        <textarea
-          id="seller-${convoId}"
-          placeholder="Reply..."
-        ></textarea><br>
-
-        <input
-          type="file"
-          id="seller-files-${convoId}"
-          multiple
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-          style="display:block;margin:6px 0;font-size:12px;"
-        >
-
-        <button onclick="
-          handleReply(
-            '${convoId}',
-            '${getOtherUserId(visibleMsgs)}',
-            '${firstMsg.productId}',
-            'seller-${convoId}',
-            'seller-files-${convoId}'
-          )
-        ">
-          Reply
-        </button>
-
-        <button
-          onclick="
-            deleteChat(
-              '${convoId}',
-              '${firstMsg.productId}'
-            )
-          "
-          style="
-            background:red;
-            color:white;
-            margin-top:10px;
-          "
-        >
-          Delete Chat
-        </button>
-
-      </li>
+      </div>
     `;
   }
 
-  if (targetConversationId) {
-    setTimeout(() => {
-      const card = document.getElementById(`conversation-${targetConversationId}`);
+  // Re-open whichever conversation was already active (sending a message
+  // re-runs this whole function, and the detail pane shouldn't go blank
+  // every time), or the one linked from a "New Message" notification.
+  const toOpen = messagingState[role].activeId || targetConversationId;
 
-      if (card) {
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
-        card.classList.add("highlight-order");
-
-        setTimeout(() => {
-          card.classList.remove("highlight-order");
-        }, 5000);
-      }
-    }, 300);
+  if (toOpen && messagingState[role].conversations[toOpen]) {
+    showConversation(role, toOpen);
   }
 }
 
-
-/* ================= LOAD BUYER MESSAGES ================= */
+async function loadSellerMessages() {
+  await renderMessagingUI("seller");
+}
 
 async function loadBuyerMessages() {
-  const msgList = document.getElementById("buyerMessages");
-  if (!msgList || !auth.currentUser) return;
-
-  // If we arrived here from a "New Message" notification link, jump to and
-  // highlight that specific conversation once it's rendered below.
-  const targetConversationId =
-    new URLSearchParams(window.location.search).get("conversationId");
-
-  // Scoped to this user as sender OR receiver -- an unfiltered collection
-  // scan here would both leak every user's private messages to anyone, and
-  // (since the deployed Firestore rules require this same scoping) fail
-  // outright with a permission-denied error.
-  const q = query(
-    collection(db, "messages"),
-    or(
-      where("senderId", "==", auth.currentUser.uid),
-      where("receiverId", "==", auth.currentUser.uid)
-    )
-  );
-
-  const snapshot = await getDocs(q);
-  msgList.innerHTML = "";
-
-  const conversations = {};
-
-  snapshot.forEach(docSnap => {
-    const msg = docSnap.data();
-
-    if (!msg.productId) return;
-
-    // ALWAYS recompute conversationId
-    const convoId = msg.conversationId;
-
-    if (!conversations[convoId]) conversations[convoId] = [];
-
-    conversations[convoId].push(msg);
-  });
-
-  //sorting the conversation//
-  const sortedConversations = Object.entries(conversations)
-  .sort(([, msgsA], [, msgsB]) => {
-
-    const latestA = Math.max(
-      ...msgsA.map(msg => msg.createdAt?.seconds || 0)
-    );
-
-    const latestB = Math.max(
-      ...msgsB.map(msg => msg.createdAt?.seconds || 0)
-    );
-
-    return latestB - latestA; // newest first
-  });
-
-  // render
-  /*for (const convoId in conversations) {
-  
-    const msgs = conversations[convoId].filter(
-      msg => !msg.deletedBy?.includes(auth.currentUser.uid)
-    );*/
-  // render
-for (const [convoId, msgsArray] of sortedConversations) {
-
-  const msgs = msgsArray.filter(
-    msg => !msg.deletedBy?.includes(auth.currentUser.uid)
-  );
-
-  if (msgs.length === 0) continue;
-
-    if (msgs.length === 0) continue;
-
-    msgs.sort((a, b) => {
-      const getTime = (msg) => {
-        if (!msg.createdAt) return 0;
-        if (msg.createdAt.seconds) return msg.createdAt.seconds;
-        if (msg.createdAt instanceof Date) return msg.createdAt.getTime() / 1000;
-        return 0;
-      };
-
-      return getTime(a) - getTime(b);
-    });
-
-    const firstMsg = msgs[0];
-
-    //const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
-    //const product = productDoc.exists() ? productDoc.data() : {};
-    let product = {};
-
-     /* if (firstMsg.productId) {
-        try {
-        const productDoc = await getDoc(doc(db, "products", firstMsg.productId));
-        if (productDoc.exists()) {
-          product = productDoc.data();
-        }
-      } catch (err) {
-        console.warn("Bad productId:", firstMsg.productId);
-      }
-    }*/
-      if (firstMsg.productId) {
-
-        try {
-      
-          const productDoc = await getDoc(
-            doc(db, "products", firstMsg.productId)
-          );
-      
-          if (!productDoc.exists()) {
-            continue; // skip this conversation entirely
-          }
-      
-          product = productDoc.data();
-      
-        } catch (err) {
-      
-          console.warn(
-            "Bad productId:",
-            firstMsg.productId
-          );
-      
-          continue;
-        }
-      }
-
-
-    let chatHTML = "";
-
-    msgs.forEach(msg => {
-      if (msg.deletedBy?.includes(auth.currentUser.uid)) return;
-
-        const isMe = msg.senderId === auth.currentUser.uid;
-
-        const displayName =
-          isMe
-            ? "You"
-            : (msg.senderName || "Unknown User");
-
-        const time = msg.createdAt
-          ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
-          : "";
-
-          
-chatHTML += `
-  <div style="
-    background:${isMe ? '#d1f7c4' : '#f1f1f1'};
-    text-align:${isMe ? 'right' : 'left'};
-    margin:8px 0;
-    padding:12px;
-    border-radius:12px;
-  ">
-
-    <div style="
-      font-weight:bold;
-      margin-bottom:6px;
-    ">
-      ${displayName}
-    </div>
-
-    <div>
-      ${escapeHtml(msg.text)}
-    </div>
-
-    <div>${renderMessageAttachments(msg.attachments)}</div>
-
-    <small style="
-      color:gray;
-      font-size:10px;
-    ">
-      ${time}
-    </small>
-
-  </div>
-`;
-});
-
-    const productImage = product.images?.[0] || product.imageURL || "";
-
-    msgList.innerHTML += `
-      <li id="conversation-${convoId}" style="margin-bottom:20px; border:1px solid #ccc; padding:10px;">
-        <img src="${productImage}" width="80"><br>
-        <strong>${product.name || "Unknown Product"}</strong>
-
-        <div class="chat-box">
-          ${chatHTML}</div>
-
-        <textarea id="buyer-${convoId}" placeholder="Reply..."></textarea><br>
-
-        <input
-          type="file"
-          id="buyer-files-${convoId}"
-          multiple
-          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-          style="display:block;margin:6px 0;font-size:12px;"
-        >
-
-        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}', 'buyer-files-${convoId}')">
-          Reply
-        </button>
-
-        <button onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
-          style="background:red; color:white; margin-top:10px;">
-          Delete Chat
-        </button>
-      </li>
-    `;
-  }
-
-  if (targetConversationId) {
-    setTimeout(() => {
-      const card = document.getElementById(`conversation-${targetConversationId}`);
-
-      if (card) {
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
-        card.classList.add("highlight-order");
-
-        setTimeout(() => {
-          card.classList.remove("highlight-order");
-        }, 5000);
-      }
-    }, 300);
-  }
+  await renderMessagingUI("buyer");
 }
+
+// Renders the full thread for one conversation into the detail pane. Reads
+// from messagingState (populated by renderMessagingUI above) rather than
+// hitting Firestore again -- the data's already in hand.
+window.showConversation = function(role, convoId) {
+  const state = messagingState[role];
+  const convo = state.conversations[convoId];
+
+  if (!convo) return;
+
+  state.activeId = convoId;
+
+  document.querySelectorAll(`#${role}Messages .conversation-row`).forEach(row => {
+    row.classList.remove("active");
+  });
+
+  const row = document.getElementById(`conv-row-${role}-${convoId}`);
+  if (row) row.classList.add("active");
+
+  const { visibleMsgs, product, firstMsg } = convo;
+  const otherUserId = getOtherUserId(visibleMsgs);
+  const productImage = product.images?.[0] || product.imageURL || "";
+  const productName = escapeHtml(product.name) || "Unknown Product";
+
+  let chatHTML = "";
+
+  visibleMsgs.forEach(msg => {
+
+    const isMe = msg.senderId === auth.currentUser.uid;
+    const displayName = isMe ? "You" : (msg.senderName || "Unknown User");
+
+    const time = msg.createdAt
+      ? new Date(msg.createdAt.seconds * 1000).toLocaleString()
+      : "";
+
+    // Read-receipt ticks have only ever shown on the seller side -- same
+    // as before this redesign.
+    const statusHtml = role === "seller"
+      ? `
+        <div class="message-status">
+          ${msg.isRead ? "💙 Read" : msg.delivered ? "✔✔ Delivered" : "✔ Sent"}
+        </div>
+      `
+      : "";
+
+    chatHTML += `
+      <div style="
+        background:${isMe ? '#d1f7c4' : '#f1f1f1'};
+        text-align:${isMe ? 'right' : 'left'};
+        margin:8px 0;
+        padding:12px;
+        border-radius:12px;
+      ">
+
+        <div style="font-weight:bold; margin-bottom:6px;">
+          ${displayName}
+        </div>
+
+        <div>
+          ${escapeHtml(msg.text)}
+          <div>${renderMessageAttachments(msg.attachments)}</div>
+          ${statusHtml}
+        </div>
+
+        <small style="color:gray; font-size:10px;">
+          ${time}
+        </small>
+
+      </div>
+    `;
+  });
+
+  const textareaId = `${role}-${convoId}`;
+  const fileInputId = `${role}-files-${convoId}`;
+  const chipId = `${role}-chip-${convoId}`;
+  const threadId = `thread-${role}-${convoId}`;
+
+  const detail = document.getElementById(`${role}MessageDetail`);
+  if (!detail) return;
+
+  detail.innerHTML = `
+    <div class="conversation-detail-header">
+      <button class="conversation-back-btn" onclick="showConversationList('${role}')" aria-label="Back">←</button>
+      <img src="${productImage}" alt="">
+      <strong>${productName}</strong>
+      <button
+        onclick="deleteChat('${convoId}', '${firstMsg.productId}')"
+        style="margin-left:auto;background:none;border:none;color:var(--lv-danger,#C6362E);cursor:pointer;font-size:13px;"
+      >
+        Delete Chat
+      </button>
+    </div>
+
+    <div class="conversation-thread" id="${threadId}">
+      ${chatHTML}
+    </div>
+
+    <div id="${chipId}"></div>
+
+    <div class="chat-input-bar">
+      <label class="chat-attach-btn" for="${fileInputId}" title="Attach a file">+</label>
+      <input
+        type="file"
+        id="${fileInputId}"
+        multiple
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+        style="display:none;"
+        onchange="updateFileChip('${fileInputId}', '${chipId}')"
+      >
+      <textarea
+        class="chat-text-input"
+        id="${textareaId}"
+        placeholder="Type a message..."
+        rows="1"
+        onkeydown="if(event.key === 'Enter' && !event.shiftKey){ event.preventDefault(); handleReply('${convoId}', '${otherUserId}', '${firstMsg.productId}', '${textareaId}', '${fileInputId}'); }"
+      ></textarea>
+      <button
+        class="chat-send-btn"
+        onclick="handleReply('${convoId}', '${otherUserId}', '${firstMsg.productId}', '${textareaId}', '${fileInputId}')"
+        aria-label="Send"
+      >➤</button>
+    </div>
+  `;
+
+  const threadEl = document.getElementById(threadId);
+  if (threadEl) threadEl.scrollTop = threadEl.scrollHeight;
+
+  // Mobile: slide from the list over to the open thread.
+  const appEl = document.getElementById(`${role}MessagesApp`);
+  if (appEl) appEl.classList.add("showing-detail");
+};
+
+// Mobile back button: return from the open thread to the conversation list.
+window.showConversationList = function(role) {
+  const appEl = document.getElementById(`${role}MessagesApp`);
+  if (appEl) appEl.classList.remove("showing-detail");
+};
+
+// Shows a small chip for whatever file(s) are currently selected in the
+// attach input, so it's clear something's queued up before hitting send.
+window.updateFileChip = function(fileInputId, chipId) {
+  const input = document.getElementById(fileInputId);
+  const chipContainer = document.getElementById(chipId);
+
+  if (!input || !chipContainer) return;
+
+  const files = Array.from(input.files || []);
+
+  chipContainer.innerHTML = files
+    .map(f => `<span class="chat-file-chip">📎 ${escapeHtml(f.name)}</span>`)
+    .join("");
+};
 
 
 /* ================= AUTH LOAD FOR MESSAGES PAGE ================= 

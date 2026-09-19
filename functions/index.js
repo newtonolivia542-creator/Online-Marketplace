@@ -57,6 +57,37 @@ class InsufficientStockError extends Error {
   }
 }
 
+// Trims and length-caps a delivery address the client sent along with
+// verifyPayment. This is shape validation, not fraud prevention -- a buyer
+// lying about their own shipping address only hurts themselves -- so an
+// incomplete address is stored as-is (missing fields just come through
+// empty) rather than failing the request. Failing here would leave an
+// already-paid order stuck with no way to complete it, which is worse than
+// an order the seller has to follow up on for a missing address.
+function sanitizeDeliveryAddress(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const field = (value, maxLen) =>
+    typeof value === "string" ? value.trim().slice(0, maxLen) : "";
+
+  const address = {
+    fullName: field(raw.fullName, 100),
+    line1: field(raw.line1, 200),
+    line2: field(raw.line2, 200),
+    city: field(raw.city, 100),
+    state: field(raw.state, 100),
+    zip: field(raw.zip, 20),
+    country: field(raw.country, 100),
+    phone: field(raw.phone, 30),
+  };
+
+  // Every field came through empty -- treat it the same as "no address
+  // sent" rather than storing an all-blank object.
+  const hasAnyContent = Object.values(address).some((v) => v.length > 0);
+
+  return hasAnyContent ? address : null;
+}
+
 // Resolves the calling buyer's uid from a Firebase Auth ID token sent as
 // "Authorization: Bearer <token>". Never trust a buyerId supplied in the body.
 async function getUidFromRequest(req) {
@@ -282,11 +313,13 @@ exports.verifyPayment = onRequest(
         return res.status(401).send({ error: "Authentication required." });
       }
 
-      const { orderId } = req.body || {};
+      const { orderId, deliveryAddress: rawDeliveryAddress } = req.body || {};
 
       if (!orderId || typeof orderId !== "string") {
         return res.status(400).send({ error: "Missing orderId." });
       }
+
+      const deliveryAddress = sanitizeDeliveryAddress(rawDeliveryAddress);
 
       const pendingOrderRef = db.collection("pendingOrders").doc(orderId);
       const pendingSnap = await pendingOrderRef.get();
@@ -346,9 +379,20 @@ exports.verifyPayment = onRequest(
             db.collection("products").doc(item.productId)
           );
 
-          const productSnaps = await Promise.all(
-            productRefs.map((ref) => tx.get(ref))
-          );
+          // Firestore transactions require every read before any write, so
+          // the order-number counter is read here alongside the product
+          // stock, even though it's only written once at the end of the
+          // loop below.
+          const counterRef = db.collection("counters").doc("orders");
+
+          const [productSnaps, counterSnap] = await Promise.all([
+            Promise.all(productRefs.map((ref) => tx.get(ref))),
+            tx.get(counterRef),
+          ]);
+
+          let nextOrderNumber = counterSnap.exists
+            ? (counterSnap.data().count || 0)
+            : 0;
 
           // Re-validate stock is still available right before committing the
           // sale -- it may have changed since the PaymentIntent was created.
@@ -371,6 +415,9 @@ exports.verifyPayment = onRequest(
 
             newOrderIds.push(orderRef.id);
 
+            nextOrderNumber += 1;
+            const orderNumber = `LSV-${String(nextOrderNumber).padStart(6, "0")}`;
+
             tx.set(orderRef, {
               productId: item.productId,
               sellerId: item.sellerId,
@@ -382,6 +429,16 @@ exports.verifyPayment = onRequest(
               status: "paid",
               stripePaymentIntentId: freshPending.stripePaymentIntentId,
               checkoutId: orderId,
+              orderNumber,
+              deliveryAddress: deliveryAddress,
+              trackingNumber: null,
+              // Snapshot of the product AT THE MOMENT OF PURCHASE -- orders
+              // are a historical record and must stay intact even if the
+              // seller edits or deletes the listing later. Never re-fetch
+              // the live product doc to display an order; use these instead.
+              productName: product.name || "Product",
+              productImage: product.images?.[0] || product.imageURL || null,
+              productDescription: product.description || null,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
@@ -425,6 +482,8 @@ exports.verifyPayment = onRequest(
           (freshPending.cartItemIds || []).forEach((cartItemId) => {
             tx.delete(db.collection("carts").doc(cartItemId));
           });
+
+          tx.set(counterRef, { count: nextOrderNumber }, { merge: true });
 
           tx.update(pendingOrderRef, {
             status: "completed",

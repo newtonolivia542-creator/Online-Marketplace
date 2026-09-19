@@ -16,6 +16,17 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
     }
 
+    // A buyer may only review an order that's actually theirs, for the
+    // product the review claims to be about, and only once it's been
+    // delivered -- matching the "Leave Review" button, which only ever
+    // appears on a delivered order.
+    function canReviewOrder(orderId, productId) {
+      let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+      return order.userId == request.auth.uid
+        && order.productId == productId
+        && order.status == "delivered";
+    }
+
     // =========================
     // USERS
     // =========================
@@ -73,10 +84,15 @@ service cloud.firestore {
     // =========================
     // Orders are only ever created by the verifyPayment Cloud Function
     // (Admin SDK, bypasses these rules entirely) -- clients can never
-    // create one. Buyer, seller, or admin may read. The owning seller may
-    // update ONLY status/shippedAt/deliveredAt, and only to move the order
-    // to "shipped" or "delivered" -- price, quantity, buyer, and "paid"
-    // status can't be touched from the client.
+    // create one, so deliveryAddress/orderNumber set there can't be forged
+    // or altered afterward either. Buyer, seller, or admin may read -- this
+    // is also what scopes a multi-seller checkout's delivery address to
+    // only the seller(s) who actually have an order for it, since each
+    // seller's line item is its own document. The owning seller may update
+    // ONLY status/shippedAt/deliveredAt/trackingNumber, and only while
+    // moving the order to (or already at) "shipped" or "delivered" -- price,
+    // quantity, buyer, address, and "paid" status can't be touched from the
+    // client.
     match /orders/{orderId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
@@ -88,10 +104,20 @@ service cloud.firestore {
 
       allow update: if isSignedIn()
         && resource.data.sellerId == request.auth.uid
-        && unchangedExcept(resource, request, ["status", "shippedAt", "deliveredAt"])
+        && unchangedExcept(resource, request, ["status", "shippedAt", "deliveredAt", "trackingNumber"])
         && request.resource.data.status in ["shipped", "delivered"];
 
       allow delete: if false;
+    }
+
+    // =========================
+    // ORDER NUMBER COUNTER
+    // =========================
+    // A single counter document incremented inside the verifyPayment
+    // transaction to hand out sequential, human-readable order numbers.
+    // Admin SDK only -- clients never read or write it directly.
+    match /counters/{counterId} {
+      allow read, write: if false;
     }
 
     // =========================
@@ -161,10 +187,21 @@ service cloud.firestore {
     // REVIEWS
     // =========================
     // Public read (shown on product pages to logged-out visitors too).
-    // Only the authoring buyer may create/edit/delete their own review.
+    // Create requires proof of a real, delivered purchase (canReviewOrder
+    // above) -- a buyer can no longer post a review for a product they
+    // never bought just by guessing a productId. Only the authoring buyer
+    // may create/edit/delete their own review; photos ride along as a
+    // "photos" array on the same document, no separate rule needed for
+    // them at the Firestore layer (Storage has its own rule for the actual
+    // image files).
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.buyerId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.orderId is string
+        && canReviewOrder(request.resource.data.orderId, request.resource.data.productId);
+
       allow update, delete: if isSignedIn() && resource.data.buyerId == request.auth.uid;
     }
 

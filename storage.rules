@@ -17,6 +17,51 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Review photos: path is reviews/{buyerId}/{orderId}/{fileName}. Public
+    // read (reviews themselves are public in Firestore too). Write requires
+    // the uploader to be the same buyerId the path claims -- the deeper
+    // check (did this buyer actually buy and receive this specific order)
+    // lives in the Firestore "reviews" create rule, since a photo with no
+    // matching review document is never rendered anywhere anyway.
+    match /reviews/{buyerId}/{orderId}/{fileName} {
+      allow read: if true;
+
+      allow write: if request.auth != null
+        && request.auth.uid == buyerId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Message attachments: path is messages/{conversationId}/{senderId}/
+    // {fileName}. conversationId is always "<uid1>_<uid2>_<productId>" (see
+    // getConversationId in app.js) with the two participant UIDs sorted --
+    // splitting on "_" and checking request.auth.uid against the first two
+    // segments is exactly how app.js itself identifies participants, and
+    // avoids a cross-service Firestore read on every attachment view.
+    // Firebase Auth UIDs never contain "_", so this split is unambiguous.
+    match /messages/{conversationId}/{senderId}/{fileName} {
+      allow read: if request.auth != null
+        && (conversationId.split('_')[0] == request.auth.uid
+            || conversationId.split('_')[1] == request.auth.uid);
+
+      allow write: if request.auth != null
+        && request.auth.uid == senderId
+        && (conversationId.split('_')[0] == request.auth.uid
+            || conversationId.split('_')[1] == request.auth.uid)
+        && request.resource.size < 10 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*') ||
+          request.resource.contentType in [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'text/plain'
+          ]
+        );
+    }
+
     // Deny everything else by default.
     match /{allPaths=**} {
       allow read, write: if false;

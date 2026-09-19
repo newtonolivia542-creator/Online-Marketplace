@@ -54,6 +54,36 @@ let aiGeneratedThisSession = false;
 const functions = getFunctions();
 //const storage = getStorage();
 
+// Several render functions build HTML with `innerHTML +=` and drop
+// user-supplied text straight in (this codebase does this already for
+// things like color/size). Anything typed by ONE user that gets displayed
+// to a DIFFERENT user -- a delivery address shown to the seller, for
+// example -- must go through this first, or a buyer could type something
+// like <img src=x onerror=...> as their name and have it execute in the
+// seller's browser.
+function escapeHtml(value) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// When the browser restores a page from its back/forward cache (bfcache)
+// -- e.g. clicking Back after navigating to another page -- it resumes the
+// page exactly as frozen the moment you left, including any images or
+// Firestore data that were still mid-load. Those in-flight loads don't
+// reliably resume, which is why a page can look stuck after Back but works
+// fine after a manual reload. Force that same fresh reload automatically
+// instead of leaving the buyer/seller looking at a stalled page.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    window.location.reload();
+  }
+});
+
 /* ================= REGISTER ================= */
 const registerForm = document.getElementById("registerForm");
 if (registerForm) {
@@ -707,6 +737,18 @@ async function startCheckout(items, cartItemIds, mode) {
     if (paymentMessage) paymentMessage.textContent = "";
     if (modal) modal.style.display = "block";
 
+    // Prefill from the buyer's saved address, if they have one -- they only
+    // need to type it once; editing it here updates that saved default when
+    // they pay (see the payBtn handler).
+    if (document.getElementById("deliveryAddressSection")) {
+      try {
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+        fillDeliveryAddressForm(userSnap.exists() ? userSnap.data().defaultAddress : null);
+      } catch (addressErr) {
+        console.error("Could not load saved address:", addressErr);
+      }
+    }
+
   } catch (err) {
     console.error(err);
     alert("Unable to start checkout: " + err.message);
@@ -737,6 +779,77 @@ const cardElementContainer = document.getElementById("card-element");
 
 if(cardElementContainer){
   card.mount("#card-element");
+
+  // The address form lives inside the same checkout modal as the card
+  // element, so it's built here too -- once per page, right before the
+  // card mounts -- rather than duplicating this markup across cart.html,
+  // product-detail.html, and buyer dashboard.html by hand (all three ship
+  // their own copy of #checkoutModal; that kind of triplicated markup is
+  // exactly what's caused drift/bugs elsewhere in this codebase).
+  const addressFieldDefs = [
+    { id: "addrFullName", label: "Full name", required: true },
+    { id: "addrLine1", label: "Address line 1", required: true },
+    { id: "addrLine2", label: "Address line 2 (optional)", required: false },
+    { id: "addrCity", label: "City", required: true },
+    { id: "addrState", label: "State", required: true },
+    { id: "addrZip", label: "ZIP / postal code", required: true },
+    { id: "addrCountry", label: "Country", required: true },
+    { id: "addrPhone", label: "Phone (optional)", required: false },
+  ];
+
+  const addressSection = document.createElement("div");
+  addressSection.id = "deliveryAddressSection";
+  addressSection.style.marginBottom = "16px";
+
+  addressSection.innerHTML =
+    `<h3 style="margin:0 0 10px;font-size:16px;">Delivery Address</h3>` +
+    addressFieldDefs
+      .map(
+        (f) => `
+          <input
+            type="text"
+            id="${f.id}"
+            placeholder="${f.label}"
+            style="display:block;width:100%;margin-bottom:8px;box-sizing:border-box;"
+            ${f.required ? "required" : ""}
+          >
+        `
+      )
+      .join("");
+
+  cardElementContainer.parentNode.insertBefore(addressSection, cardElementContainer);
+}
+
+// Fills the address form from a saved address (or clears it if none exists).
+function fillDeliveryAddressForm(address) {
+  const a = address || {};
+  ["FullName", "Line1", "Line2", "City", "State", "Zip", "Country", "Phone"].forEach((key) => {
+    const el = document.getElementById(`addr${key}`);
+    if (el) el.value = a[key.charAt(0).toLowerCase() + key.slice(1)] || "";
+  });
+}
+
+// Reads the address form into a plain object, trimming every field.
+function getDeliveryAddressFromForm() {
+  const read = (id) => (document.getElementById(id)?.value || "").trim();
+  return {
+    fullName: read("addrFullName"),
+    line1: read("addrLine1"),
+    line2: read("addrLine2"),
+    city: read("addrCity"),
+    state: read("addrState"),
+    zip: read("addrZip"),
+    country: read("addrCountry"),
+    phone: read("addrPhone"),
+  };
+}
+
+// Required fields only -- line2/phone stay optional, matching the form above.
+function isDeliveryAddressComplete(address) {
+  return Boolean(
+    address.fullName && address.line1 && address.city &&
+    address.state && address.zip && address.country
+  );
 }
 
 
@@ -1178,9 +1291,36 @@ if(payBtn){
       return;
     }
 
+    // Validate and collect the delivery address BEFORE charging the card --
+    // an incomplete address should stop checkout here, not after the buyer
+    // has already been charged.
+    let deliveryAddress = null;
+
+    if (document.getElementById("deliveryAddressSection")) {
+      deliveryAddress = getDeliveryAddressFromForm();
+
+      if (!isDeliveryAddressComplete(deliveryAddress)) {
+        alert("Please fill in your full name, address, city, state, ZIP, and country.");
+        return;
+      }
+    }
+
     isPayInFlight = true;
     payBtn.disabled = true;
     payBtn.textContent = "Processing...";
+
+    // Best-effort: remember this as the buyer's default for next time. Not
+    // critical to the purchase itself, so a failure here is logged and
+    // checkout continues rather than blocking payment over it.
+    if (deliveryAddress) {
+      try {
+        await updateDoc(doc(db, "users", auth.currentUser.uid), {
+          defaultAddress: deliveryAddress
+        });
+      } catch (saveAddressErr) {
+        console.error("Could not save default address:", saveAddressErr);
+      }
+    }
 
     try {
 
@@ -1227,7 +1367,7 @@ if(payBtn){
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`
         },
-        body: JSON.stringify({ orderId: currentOrderId })
+        body: JSON.stringify({ orderId: currentOrderId, deliveryAddress })
       });
 
       const verifyData = await verifyResponse.json();
@@ -1337,20 +1477,35 @@ async function loadMyOrders() {
   for (const docSnap of snapshot.docs) {
     const order = docSnap.data();
 
-    // Get product info
-    const productSnap = await getDoc(doc(db, "products", order.productId));
-    const productName = productSnap.exists() ? productSnap.data().name : "Unknown product";
+    // Product info: prefer the snapshot stored on the order at purchase
+    // time (survives the seller editing/deleting the listing later). Only
+    // fall back to a live lookup for orders placed before that snapshot
+    // existed, and to a placeholder if even that product is gone now.
+    let productName = order.productName || null;
+    let image = order.productImage || null;
+
+    if (!productName) {
+      const productSnap = await getDoc(doc(db, "products", order.productId));
+      if (productSnap.exists()) {
+        const product = productSnap.data();
+        productName = product.name || null;
+        image = image || product.images?.[0] || product.imageURL || null;
+      }
+    }
+
+    productName = productName || "Product no longer available";
+
 //New Update
   const orderDate = order.createdAt
     ? new Date(order.createdAt.seconds * 1000).toLocaleString()
     : "N/A";
 
   const quantity = order.quantity || 1;
-  const price = order.price || (productSnap.exists() ? productSnap.data().price : 0);
+  // order.price has always been stored on every order since day one, so
+  // this is correct regardless of whether the product snapshot above
+  // exists.
+  const price = order.price || 0;
   const total = price * quantity;
-
-  const product = productSnap.exists() ? productSnap.data() : {};
-  const image = product.images?.[0] || product.imageURL || "";
 
   //NEW FUNCTION FOR REVIEW//
   const reviewQuery = query(
@@ -1370,14 +1525,36 @@ async function loadMyOrders() {
   }
   //ENDS HERE//
 
+  const addr = order.deliveryAddress;
+
+  const addressHtml = addr
+    ? `
+      <p><strong>Delivering to:</strong><br>
+        ${escapeHtml(addr.fullName)}<br>
+        ${escapeHtml(addr.line1)}${addr.line2 ? `<br>${escapeHtml(addr.line2)}` : ""}<br>
+        ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.zip)}<br>
+        ${escapeHtml(addr.country)}
+      </p>
+    `
+    : "";
+
+  const trackingHtml = order.trackingNumber
+    ? `<p><strong>Tracking #:</strong> ${escapeHtml(order.trackingNumber)}</p>`
+    : "";
+
+  const productImageHtml = image
+    ? `<img src="${image}" class="product-img" style="width: 200px;">`
+    : `<div class="product-img" style="width:200px;height:200px;background:var(--lv-canvas,#F6F8F6);border:1px solid var(--lv-line,#E2E8E4);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--lv-slate,#5B6B62);">No image</div>`;
+
   orderList.innerHTML += `
    <div
     id="order-${docSnap.id}"
     class="order-details"
   >
       <h3>${productName}</h3>
-      <img src="${image}" class="product-img" style="width: 200px;">
+      ${productImageHtml}
 
+      <p><strong>Order #:</strong> ${escapeHtml(order.orderNumber) || docSnap.id}</p>
       <p><strong>Date Ordered:</strong> ${orderDate}</p>
       <p><strong>Quantity:</strong> ${quantity}</p>
       <p><strong>Total:</strong> $${total}</p>
@@ -1385,6 +1562,9 @@ async function loadMyOrders() {
       <p class="order-status status-${order.status}">
         <strong>Status:</strong> ${order.status}
       </p>
+
+      ${trackingHtml}
+      ${addressHtml}
 
       ${
         order.status === "delivered"
@@ -1407,12 +1587,18 @@ async function loadMyOrders() {
                   ${"★".repeat(reviewData.rating)}
                   ${"☆".repeat(5 - reviewData.rating)}
                 </p>
-      
-                <p>${reviewData.comment}</p>
+
+                <p>${escapeHtml(reviewData.comment)}</p>
+
+                <div>${(reviewData.photos || []).map(p => `
+                  <a href="${p.url}" target="_blank" rel="noopener">
+                    <img src="${p.url}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;margin:0 6px 6px 0;">
+                  </a>
+                `).join("")}</div>
               </div>
             `
             : `
-              <button onclick="window.location.href='reviews.html?productId=${order.productId}'">
+              <button onclick="window.location.href='reviews.html?productId=${order.productId}&orderId=${docSnap.id}'">
                 Leave Review
               </button>
             `
@@ -2539,28 +2725,32 @@ async function loadSellerOrders() {
     
         }
     
-        // Get product info
-        const productSnap = await getDoc(
-            doc(db, "products", order.productId)
-        );
-        //New block Again//
-        let productName = "Unknown Product";
-        let productImage = "";
-        let productPrice = 0;
-        
-        if (productSnap.exists()) {
-        
-            const product = productSnap.data();
-        
-            productName = product.name || "Unknown Product";
-        
-            productImage =
-                product.images?.[0] ||
-                product.imageURL ||
-                "";
-        
-            productPrice = product.price || 0;
-        }        
+        // Product info: prefer the snapshot stored on the order itself
+        // (captured at purchase time, so it survives the seller editing or
+        // deleting the listing later). Only fall back to a live lookup for
+        // orders placed before that snapshot existed -- and if even that
+        // fails (an old order for a product that's since been deleted),
+        // fall back to a clean placeholder instead of "Unknown Product".
+        let productName = order.productName || null;
+        let productImage = order.productImage || null;
+
+        if (!productName) {
+            const productSnap = await getDoc(
+                doc(db, "products", order.productId)
+            );
+
+            if (productSnap.exists()) {
+                const product = productSnap.data();
+                productName = product.name || null;
+                productImage = productImage || product.images?.[0] || product.imageURL || null;
+            }
+        }
+
+        productName = productName || "Product no longer available";
+        // order.price has always been stored on every order since day one,
+        // even before this snapshot existed -- so the total below is
+        // correct for every order, old or new, regardless of productName.
+        const productPrice = order.price || 0;
 
     let shipBtn = "";
     let deliverBtn = "";
@@ -2607,19 +2797,53 @@ async function loadSellerOrders() {
         ? order.createdAt.toDate().toLocaleString()
         : "Unknown date";
 
+    const addr = order.deliveryAddress;
+
+    // Buyer-typed text displayed in the SELLER's browser -- every field
+    // goes through escapeHtml so a buyer can't inject markup/script via
+    // their own address.
+    const addressHtml = addr
+      ? `
+        <p><strong>Ship to:</strong><br>
+          ${escapeHtml(addr.fullName)}<br>
+          ${escapeHtml(addr.line1)}${addr.line2 ? `<br>${escapeHtml(addr.line2)}` : ""}<br>
+          ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.zip)}<br>
+          ${escapeHtml(addr.country)}
+          ${addr.phone ? `<br>Phone: ${escapeHtml(addr.phone)}` : ""}
+        </p>
+      `
+      : `<p><small style="color:gray;">No delivery address provided.</small></p>`;
+
+    const trackingHtml =
+      order.status === "shipped" || order.status === "delivered"
+        ? `
+          <p>
+            <strong>Tracking #:</strong> ${escapeHtml(order.trackingNumber) || "Not added yet"}
+            <button onclick="editTrackingNumber('${docSnap.id}')" class="btn-sm">
+              ${order.trackingNumber ? "Edit" : "Add"}
+            </button>
+          </p>
+        `
+        : "";
+
+    const productImageHtml = productImage
+      ? `<img src="${productImage}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;">`
+      : `<div style="width:60px;height:60px;border-radius:8px;background:var(--lv-canvas,#F6F8F6);border:1px solid var(--lv-line,#E2E8E4);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--lv-slate,#5B6B62);text-align:center;">No image</div>`;
+
     // FINAL UI
     sellerOrders.innerHTML += `
     <li id="order-${docSnap.id}" style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
 
-        <img src="${productImage}"
-             style="width:60px;height:60px;object-fit:cover;border-radius:8px;">
+        ${productImageHtml}
 
         <div>
+
+            <p><strong>Order #:</strong> ${escapeHtml(order.orderNumber) || docSnap.id}</p>
 
             <p><strong>Buyer:</strong> ${buyerName}</p>
 
             <p><small style="color:gray;">${orderDate}</small></p>
-    
+
             <p>
                 <strong>${productName}</strong> |
                 Status:
@@ -2627,21 +2851,25 @@ async function loadSellerOrders() {
                     ${order.status}
                 </span>
             </p>
-    
+
             <p><strong>Quantity:</strong> ${quantity}</p>
-    
+
             ${order.color ? `<p><strong>Color:</strong> ${order.color}</p>` : ""}
-    
+
             ${order.size ? `<p><strong>Size:</strong> ${order.size}</p>` : ""}
-    
+
             <p><strong>Total:</strong> $${total.toFixed(2)}</p>
-    
+
+            ${addressHtml}
+
+            ${trackingHtml}
+
             ${deliveryInfo}
-    
+
             <br>
-    
+
             ${shipBtn}
-    
+
             ${deliverBtn}
 
         </div>
@@ -2691,10 +2919,23 @@ window.markShipped = async (orderId) => {
         : "Unknown Product";
     //ends above//
 
-    await updateDoc(doc(db, "orders", orderId), {
+    const trackingNumber = prompt(
+      "Tracking number (optional -- leave blank to skip, you can add it later):",
+      ""
+    );
+
+    const orderUpdate = {
       status: "shipped",
       shippedAt: new Date() // save timestamp
-    });
+    };
+
+    // A cancelled prompt returns null -- leave any existing tracking number
+    // untouched in that case rather than clearing it.
+    if (trackingNumber !== null) {
+      orderUpdate.trackingNumber = trackingNumber.trim() || null;
+    }
+
+    await updateDoc(doc(db, "orders", orderId), orderUpdate);
     //new one too july 22//
 
     await addDoc(collection(db, "notifications"), {
@@ -2707,7 +2948,7 @@ window.markShipped = async (orderId) => {
 
     message: `Your order for "${productName}" has been shipped.`,
 
-    link: "order.html",
+    link: `order.html?orderId=${orderId}`,
 
     read: false,
 
@@ -2720,6 +2961,35 @@ window.markShipped = async (orderId) => {
 
   } catch (err) {
     alert("Failed to update order: " + err.message);
+  }
+};
+
+// Lets a seller add/correct a tracking number any time after shipping --
+// Firestore rules only allow this while the order's status is "shipped" or
+// "delivered", same as the check already built into loadSellerOrders above.
+window.editTrackingNumber = async (orderId) => {
+  try {
+    const orderSnap = await getDoc(doc(db, "orders", orderId));
+
+    if (!orderSnap.exists()) {
+      alert("Order not found.");
+      return;
+    }
+
+    const current = orderSnap.data().trackingNumber || "";
+
+    const trackingNumber = prompt("Tracking number:", current);
+
+    if (trackingNumber === null) return; // cancelled
+
+    await updateDoc(doc(db, "orders", orderId), {
+      trackingNumber: trackingNumber.trim() || null
+    });
+
+    loadSellerOrders();
+
+  } catch (err) {
+    alert("Failed to update tracking number: " + err.message);
   }
 };
 
@@ -3035,12 +3305,50 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
 }*/
 
 // Send message (USED EVERYWHERE)
-async function sendMessage(productId, otherUserId, inputId, existingConvoId = null) {
+// File types allowed for a message attachment that isn't an image -- kept
+// as an explicit allow-list (mirrored by storage.rules) rather than "any
+// file", so this can't become an arbitrary-file drop.
+const MESSAGE_ATTACHMENT_ALLOWED_FILE_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+];
+
+const MESSAGE_ATTACHMENT_MAX_FILES = 5;
+const MESSAGE_ATTACHMENT_MAX_SIZE = 10 * 1024 * 1024;
+
+async function sendMessage(productId, otherUserId, inputId, existingConvoId = null, fileInputId = null) {
 
     const input = document.getElementById(inputId);
     const text = input.value.trim();
 
-    if (!text) return;
+    const fileInput = fileInputId ? document.getElementById(fileInputId) : null;
+    const files = fileInput ? Array.from(fileInput.files || []) : [];
+
+    // A message needs SOME content -- text, an attachment, or both.
+    if (!text && files.length === 0) return;
+
+    if (files.length > MESSAGE_ATTACHMENT_MAX_FILES) {
+        alert(`You can attach up to ${MESSAGE_ATTACHMENT_MAX_FILES} files at once.`);
+        return;
+    }
+
+    for (const file of files) {
+        const isImage = file.type.startsWith("image/");
+
+        if (!isImage && !MESSAGE_ATTACHMENT_ALLOWED_FILE_TYPES.includes(file.type)) {
+            alert(`"${file.name}" isn't a supported file type.`);
+            return;
+        }
+
+        if (file.size > MESSAGE_ATTACHMENT_MAX_SIZE) {
+            alert(`"${file.name}" is larger than 10MB.`);
+            return;
+        }
+    }
 
     const user = auth.currentUser;
 
@@ -3064,6 +3372,28 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
             user.displayName ||
             user.email;
 
+        // Upload attachments before writing the message doc, so the doc is
+        // only ever created with working URLs already in hand.
+        const attachments = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const path = `messages/${conversationId}/${user.uid}/${Date.now()}_${i}_${file.name}`;
+            const fileRef = ref(storage, path);
+
+            await uploadBytes(fileRef, file);
+            const url = await getDownloadURL(fileRef);
+
+            attachments.push({
+                url,
+                path,
+                type: file.type.startsWith("image/") ? "image" : "file",
+                fileName: file.name,
+                sizeBytes: file.size,
+                contentType: file.type,
+            });
+        }
+
         // Save message
       await addDoc(collection(db, "messages"), {
 
@@ -3076,6 +3406,7 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
           receiverId: otherUserId,
 
           text,
+          attachments,
 
           createdAt: serverTimestamp(),
 
@@ -3146,6 +3477,7 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
       }
 // not included//
         input.value = "";
+        if (fileInput) fileInput.value = "";
 
         console.log(
             "Message sent:",
@@ -3164,17 +3496,20 @@ async function sendMessage(productId, otherUserId, inputId, existingConvoId = nu
 }
 
 // Handle reply from UI
-window.handleReply = async function(convoId, receiverId, productId, textareaId) {
+window.handleReply = async function(convoId, receiverId, productId, textareaId, fileInputId) {
   const input = document.getElementById(textareaId);
   const text = input.value.trim();
 
-  if (!text) {
-    alert("Reply cannot be empty");
+  const fileInput = fileInputId ? document.getElementById(fileInputId) : null;
+  const hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
+
+  if (!text && !hasFiles) {
+    alert("Type a message or attach a file.");
     return;
   }
 
   // PASS convoId HERE
-  await sendMessage(productId, receiverId, textareaId, convoId);
+  await sendMessage(productId, receiverId, textareaId, convoId, fileInputId);
 
   input.value = "";
 
@@ -3192,6 +3527,32 @@ function getOtherUserId(messages) {
   }
 
   return null;
+}
+
+// Shared by loadSellerMessages/loadBuyerMessages -- renders a message's
+// attachments, if any. Images show as clickable thumbnails; anything else
+// shows as a small download chip with the filename. fileName is the only
+// attachment field that's ever user-typed (the original upload's name), so
+// it's the only one that needs escaping here.
+function renderMessageAttachments(attachments) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return "";
+
+  return attachments.map(att => {
+    if (att.type === "image") {
+      return `
+        <a href="${att.url}" target="_blank" rel="noopener">
+          <img src="${att.url}" style="max-width:160px;max-height:160px;border-radius:8px;margin:4px 4px 0 0;display:inline-block;object-fit:cover;">
+        </a>
+      `;
+    }
+
+    return `
+      <a href="${att.url}" target="_blank" rel="noopener"
+         style="display:inline-block;margin:4px 4px 0 0;padding:6px 10px;background:#fff;border:1px solid #ccc;border-radius:6px;font-size:12px;text-decoration:none;color:#14231B;">
+        📎 ${escapeHtml(att.fileName)}
+      </a>
+    `;
+  }).join("");
 }
 
 
@@ -3339,7 +3700,9 @@ async function loadSellerMessages() {
           </div>
 
           <div>
-            ${msg.text}
+            ${escapeHtml(msg.text)}
+
+            <div>${renderMessageAttachments(msg.attachments)}</div>
 
             <div class="message-status">
 
@@ -3394,12 +3757,21 @@ async function loadSellerMessages() {
           placeholder="Reply..."
         ></textarea><br>
 
+        <input
+          type="file"
+          id="seller-files-${convoId}"
+          multiple
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+          style="display:block;margin:6px 0;font-size:12px;"
+        >
+
         <button onclick="
           handleReply(
             '${convoId}',
             '${getOtherUserId(visibleMsgs)}',
             '${firstMsg.productId}',
-            'seller-${convoId}'
+            'seller-${convoId}',
+            'seller-files-${convoId}'
           )
         ">
           Reply
@@ -3602,8 +3974,10 @@ chatHTML += `
     </div>
 
     <div>
-      ${msg.text}
+      ${escapeHtml(msg.text)}
     </div>
+
+    <div>${renderMessageAttachments(msg.attachments)}</div>
 
     <small style="
       color:gray;
@@ -3628,7 +4002,15 @@ chatHTML += `
 
         <textarea id="buyer-${convoId}" placeholder="Reply..."></textarea><br>
 
-        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}')">
+        <input
+          type="file"
+          id="buyer-files-${convoId}"
+          multiple
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+          style="display:block;margin:6px 0;font-size:12px;"
+        >
+
+        <button onclick="handleReply('${convoId}', '${getOtherUserId(msgs)}', '${firstMsg.productId}', 'buyer-${convoId}', 'buyer-files-${convoId}')">
           Reply
         </button>
 
@@ -3822,15 +4204,23 @@ async function loadReviews(productId) {
       "★".repeat(review.rating) +
       "☆".repeat(5 - review.rating);
 
+    const photosHtml = (review.photos || []).map(p => `
+      <a href="${p.url}" target="_blank" rel="noopener">
+        <img src="${p.url}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;margin:6px 6px 0 0;">
+      </a>
+    `).join("");
+
     reviewsContainer.innerHTML += `
       <div class="review-card">
 
         <h4>${stars}</h4>
 
-        <p>${review.comment}</p>
+        <p>${escapeHtml(review.comment)}</p>
+
+        <div>${photosHtml}</div>
 
         <small>
-          By ${review.buyerName || "Anonymous"}
+          By ${escapeHtml(review.buyerName) || "Anonymous"}
         </small>
 
       </div>
@@ -3850,6 +4240,15 @@ if (submitReviewBtn) {
       new URLSearchParams(window.location.search)
       .get("productId");
 
+    const orderId =
+      new URLSearchParams(window.location.search)
+      .get("orderId");
+
+    if (!orderId) {
+      alert("This review link is missing its order reference. Please open this page from \"Leave Review\" on your order.");
+      return;
+    }
+
     const rating =
       Number(
         document.getElementById("reviewRating").value
@@ -3862,6 +4261,27 @@ if (submitReviewBtn) {
     if (!comment) {
       alert("Please write a review");
       return;
+    }
+
+    // Photos are optional -- validated the same way message attachments
+    // are (count/size/type), mirrored server-side by storage.rules.
+    const photoInput = document.getElementById("reviewPhotos");
+    const photoFiles = photoInput ? Array.from(photoInput.files || []) : [];
+
+    if (photoFiles.length > 3) {
+      alert("You can attach up to 3 photos.");
+      return;
+    }
+
+    for (const file of photoFiles) {
+      if (!file.type.startsWith("image/")) {
+        alert(`"${file.name}" isn't an image.`);
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`"${file.name}" is larger than 5MB.`);
+        return;
+      }
     }
 
     const userDoc =
@@ -3885,51 +4305,56 @@ if (submitReviewBtn) {
 
   const product = productSnap.data();
 
-    await addDoc(
-      collection(db, "reviews"),
-      {
-        productId,
+    submitReviewBtn.disabled = true;
 
-        productName: product.name,
+    try {
 
-        sellerId: product.sellerId,
+      // Upload photos before creating the review doc, so the doc is only
+      // ever written with working URLs already in hand.
+      const photos = [];
 
-        buyerId: auth.currentUser.uid,
+      for (let i = 0; i < photoFiles.length; i++) {
+        const file = photoFiles[i];
+        const path = `reviews/${auth.currentUser.uid}/${orderId}/${Date.now()}_${i}_${file.name}`;
+        const fileRef = ref(storage, path);
 
-        buyerName:
-          userData.fullName ||
-          auth.currentUser.displayName ||
-          auth.currentUser.email,
+        await uploadBytes(fileRef, file);
+        const url = await getDownloadURL(fileRef);
 
-        rating,
-
-        comment,
-
-        createdAt: serverTimestamp()
+        photos.push({ url, path, uploadedAt: new Date().toISOString() });
       }
-    );
 
-   /* alert("Review submitted!");
+      await addDoc(
+        collection(db, "reviews"),
+        {
+          productId,
 
-    window.location.href = "order.html";
+          orderId,
 
-  });
+          productName: product.name,
 
-}*/
+          sellerId: product.sellerId,
 
-    // ===============================
-    // CREATE NOTIFICATION FOR SELLER
-    // ===============================
+          buyerId: auth.currentUser.uid,
 
-    /*console.log("Creating review notification...");
+          buyerName:
+            userData.fullName ||
+            auth.currentUser.displayName ||
+            auth.currentUser.email,
 
-    const productSnap = await getDoc(
-      doc(db, "products", productId)
-    );
+          rating,
 
-    if (productSnap.exists()) {
+          comment,
 
-      const product = productSnap.data();*/
+          photos,
+
+          createdAt: serverTimestamp()
+        }
+      );
+
+      // ===============================
+      // CREATE NOTIFICATION FOR SELLER
+      // ===============================
 
       try {
         await addDoc(collection(db, "notifications"), {
@@ -3951,19 +4376,27 @@ if (submitReviewBtn) {
         });
 
         console.log("Notification saved successfully.");
-            } catch (error) {
+      } catch (error) {
 
-            console.error("Failed to create review notification:", error);
+        console.error("Failed to create review notification:", error);
 
-        }
+      }
 
-        alert("Review submitted!");
+      alert("Review submitted!");
 
-        window.location.href = "order.html";
+      window.location.href = "order.html";
 
-      });
+    } catch (error) {
+
+      console.error("Failed to submit review:", error);
+      alert("Failed to submit review: " + error.message);
+      submitReviewBtn.disabled = false;
 
     }
+
+  });
+
+}
 
  
 
@@ -4329,6 +4762,12 @@ if (submitReviewBtn) {
             ? product.images[0]
             : product.imageURL;
 
+      const reviewPhotosHtml = (review.photos || []).map(p => `
+        <a href="${p.url}" target="_blank" rel="noopener">
+          <img src="${p.url}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;margin:8px 8px 0 0;">
+        </a>
+      `).join("");
+
         container.innerHTML += `
             <div class="review-card" style="
                 border:1px solid #ddd;
@@ -4352,11 +4791,13 @@ if (submitReviewBtn) {
                 </p>
 
                 <p>
-                    ${review.comment}
+                    ${escapeHtml(review.comment)}
                 </p>
 
+                <div>${reviewPhotosHtml}</div>
+
                 <small style="color:#666;">
-                    <strong>By:</strong> ${review.buyerName || "Anonymous"}
+                    <strong>By:</strong> ${escapeHtml(review.buyerName) || "Anonymous"}
                 </small>
 
                 <br>

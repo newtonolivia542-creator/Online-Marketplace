@@ -16,15 +16,54 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
     }
 
+    // Opposite of unchangedExcept: true as long as none of the given keys
+    // are touched (everything else about the update is unrestricted by
+    // this check). Used to wall off Stripe Connect status fields on a
+    // user's own doc, which must only ever be written by a webhook via
+    // the Admin SDK -- never by the seller themselves.
+    function notTouching(resource, request, protectedKeys) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedKeys);
+    }
+
+    // Stripe Connect status stored on a seller's user doc. Only the Admin SDK
+    // (createConnectOnboardingLink / the account.updated webhook) may ever
+    // set these -- a user can neither write them later nor sign up with them
+    // already filled in.
+    function stripeConnectFields() {
+      return [
+        "stripeAccountId",
+        "stripeChargesEnabled",
+        "stripePayoutsEnabled",
+        "stripeDetailsSubmitted",
+        "stripeOnboardingStatus"
+      ];
+    }
+
     // A buyer may only review an order that's actually theirs, for the
     // product the review claims to be about, and only once it's been
     // delivered -- matching the "Leave Review" button, which only ever
-    // appears on a delivered order.
+    // appears on a delivered order. The order can be either a legacy
+    // per-product order or one seller's sub-order of a newer checkout
+    // (whose productIds lists every product it contained). exists() comes
+    // first in each check so a review pointing at an order that isn't there
+    // is simply denied rather than erroring.
+    function canReviewLegacyOrder(orderId, productId) {
+      return exists(/databases/$(database)/documents/orders/$(orderId))
+        && get(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/orders/$(orderId)).data.productId == productId
+        && get(/databases/$(database)/documents/orders/$(orderId)).data.status == "delivered";
+    }
+
+    function canReviewSellerOrder(orderId, productId) {
+      return exists(/databases/$(database)/documents/sellerOrders/$(orderId))
+        && get(/databases/$(database)/documents/sellerOrders/$(orderId)).data.buyerId == request.auth.uid
+        && get(/databases/$(database)/documents/sellerOrders/$(orderId)).data.fulfillmentStatus == "delivered"
+        && productId in get(/databases/$(database)/documents/sellerOrders/$(orderId)).data.productIds;
+    }
+
     function canReviewOrder(orderId, productId) {
-      let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
-      return order.userId == request.auth.uid
-        && order.productId == productId
-        && order.status == "delivered";
+      return canReviewLegacyOrder(orderId, productId)
+        || canReviewSellerOrder(orderId, productId);
     }
 
     // =========================
@@ -35,20 +74,27 @@ service cloud.firestore {
     // - Listing the WHOLE collection (admin.js's user table) is admin-only.
     // - A user may only create their OWN doc, and only with role "buyer" or
     //   "seller" -- "admin" can never be self-assigned.
+    // - Signing up can't pre-fill any Stripe Connect status field (see
+    //   stripeConnectFields above).
     // - A user may update their OWN doc but may never change their own
-    //   role. A verified admin may update ONLY status/banReason on someone
-    //   else's doc (ban/unban) -- nothing else, on nobody else's doc.
+    //   role, and may never touch their own Stripe Connect status fields --
+    //   those are only ever written by createConnectOnboardingLink / the
+    //   account.updated webhook via the Admin SDK, which bypasses these
+    //   rules entirely. A verified admin may update ONLY status/banReason on
+    //   someone else's doc (ban/unban) -- nothing else, on nobody else's doc.
     match /users/{userId} {
       allow get: if isSignedIn();
       allow list: if isAdmin();
 
       allow create: if isSignedIn()
         && request.auth.uid == userId
-        && request.resource.data.role in ["buyer", "seller"];
+        && request.resource.data.role in ["buyer", "seller"]
+        && !request.resource.data.keys().hasAny(stripeConnectFields());
 
       allow update: if isSignedIn() && (
         (request.auth.uid == userId
-          && request.resource.data.role == resource.data.role)
+          && request.resource.data.role == resource.data.role
+          && notTouching(resource, request, stripeConnectFields()))
         ||
         (isAdmin()
           && userId != request.auth.uid
@@ -108,6 +154,110 @@ service cloud.firestore {
         && request.resource.data.status in ["shipped", "delivered"];
 
       allow delete: if false;
+    }
+
+    // =========================
+    // SELLER SUB-ORDERS (Stripe Connect checkout -- one per seller per checkout)
+    // =========================
+    // Created only by verifyPayment via the Admin SDK, which bypasses
+    // these rules -- clients can never create one, so chargeType,
+    // commissionRate/commissionAmountCents, taxCents/taxLiabilityAtPurchase,
+    // transfer/refund/dispute/payout state can't be forged or altered from
+    // the client. Buyer, the owning seller, or an admin may read. The
+    // owning seller may update ONLY fulfillmentStatus/shippedAt/
+    // deliveredAt/trackingNumber, and only while moving to "shipped" or
+    // "delivered" -- exactly the same shape as the legacy per-product
+    // orders rule below, just on the new per-seller document.
+    match /sellerOrders/{sellerOrderId} {
+      allow read: if isSignedIn() && (
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if false;
+
+      // returnAddress is where the buyer should send a return; the seller
+      // enters it when shipping. Every return/refund field (activeReturnId,
+      // returnStatus, refunds) and the server-stamped shippedAtServer /
+      // deliveredAtServer are deliberately NOT in this list, so a seller can't
+      // touch them -- the return window depends on those two times.
+      allow update: if isSignedIn()
+        && resource.data.sellerId == request.auth.uid
+        && unchangedExcept(resource, request, ["fulfillmentStatus", "shippedAt", "deliveredAt", "trackingNumber", "returnAddress"])
+        && request.resource.data.fulfillmentStatus in ["shipped", "delivered"]
+        // Once an order was cancelled or returned (set by the server), the
+        // seller can't move it back to shipped/delivered.
+        && resource.data.fulfillmentStatus in ["paid", "shipped", "delivered"]
+        && (!("returnAddress" in request.resource.data) || request.resource.data.returnAddress == null || request.resource.data.returnAddress is map);
+
+      allow delete: if false;
+    }
+
+    // =========================
+    // RETURNS AND CANCELLATIONS
+    // =========================
+    // Written only by the return Cloud Functions (Admin SDK), which decide who
+    // may do what, check the return window and send the refund. The buyer, the
+    // seller of the order, and admins can read; nobody can write from a client.
+    match /returns/{returnId} {
+      allow read: if isSignedIn() && (
+        resource.data.buyerId == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create, update, delete: if false;
+    }
+
+    // =========================
+    // CHECKOUT ORDERS (one buyer-facing parent order per checkout)
+    // =========================
+    // Created only by verifyPayment via the Admin SDK. The buyer or an
+    // admin may read it; sellers read their own slice of a checkout via
+    // sellerOrders instead. Never client-writable -- there is nothing on
+    // this document a client should ever be able to change.
+    match /checkoutOrders/{checkoutId} {
+      allow read: if isSignedIn() && (
+        resource.data.buyerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create, update, delete: if false;
+    }
+
+    // =========================
+    // STRIPE WEBHOOK EVENTS (idempotency log)
+    // =========================
+    // Written and read exclusively by the webhook Cloud Function via the
+    // Admin SDK -- clients never touch this directly.
+    match /stripeWebhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    // =========================
+    // PLATFORM CONFIG (e.g. the tax-liability setting)
+    // =========================
+    // Admin-SDK only, never client-readable or writable. Holds
+    // config/platformSettings.taxLiability -- until that's explicitly set
+    // to "platform" or "connectedAccount" by an operator (never by a
+    // client), Cloud Functions treat it as unresolved and behave
+    // accordingly (see getTaxLiability / assertTaxLiabilityAllowsCheckout
+    // in functions/index.js).
+    match /config/{configId} {
+      allow read, write: if false;
+    }
+
+    // =========================
+    // PUBLIC CONFIG (return policy numbers)
+    // =========================
+    // publicConfig/returnPolicy holds the return/cancellation policy numbers
+    // (return window, days to ship a return back, ...). Anyone may read it so
+    // the app can show the same dates the server enforces; nobody can write it
+    // from a client -- it's edited in the Firebase console / Admin SDK.
+    match /publicConfig/{docId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // =========================

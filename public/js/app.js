@@ -653,12 +653,15 @@ const elements = stripe.elements();
 
 const card = elements.create("card");*/
 
+const STRIPE_PUBLISHABLE_KEY =
+  "pk_test_51TZMZKJP6GbymKnndtGlf6eMNL3TgXgtA5nlZB6i3noPpqmC7dwXnWHbSDMQCuNbhlgSDy6sdzUHCmqKDZGE60sf008lPcapEf";
+
 let stripe = null;
 let elements = null;
 let card = null;
 
 if (typeof Stripe !== "undefined") {
-  stripe = Stripe("pk_test_51TZMZKJP6GbymKnndtGlf6eMNL3TgXgtA5nlZB6i3noPpqmC7dwXnWHbSDMQCuNbhlgSDy6sdzUHCmqKDZGE60sf008lPcapEf");
+  stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
 
   elements = stripe.elements();
   card = elements.create("card");
@@ -669,8 +672,14 @@ let selectedProduct = null;
 const createPaymentIntentURL =
   "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/createPaymentIntent";
 
+const saveCheckoutAddressURL =
+  "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/saveCheckoutAddress";
+
 const verifyPaymentURL =
   "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/verifyPayment";
+
+const createConnectOnboardingLinkURL =
+  "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/createConnectOnboardingLink";
 
 /* ================= SHARED CHECKOUT (BUY NOW + CART) =================
    The server (createPaymentIntent / verifyPayment) is the only thing that
@@ -681,6 +690,222 @@ const verifyPaymentURL =
 let currentOrderId = null;
 let currentClientSecret = null;
 let currentCheckoutMode = null; // "buyNow" | "cart"
+
+// Which Stripe instance + card field the current checkout is paid with. A
+// single-seller order is a Direct Charge on that seller's connected account,
+// so it has to be confirmed by a Stripe.js instance scoped to that account
+// (and a card field created from it); everything else uses the platform's.
+let activeStripe = stripe;
+let activeCard = card;
+
+function formatCents(cents) {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function resetCheckoutPaymentMethod() {
+  if (activeCard && activeCard !== card) {
+    activeCard.destroy();
+    card.mount("#card-element");
+  }
+
+  activeStripe = stripe;
+  activeCard = card;
+}
+
+function useCardFor(stripeAccountId) {
+  resetCheckoutPaymentMethod();
+
+  if (!stripeAccountId) return;
+
+  activeStripe = Stripe(STRIPE_PUBLISHABLE_KEY, { stripeAccount: stripeAccountId });
+  activeCard = activeStripe.elements().create("card");
+
+  card.unmount();
+  activeCard.mount("#card-element");
+}
+
+function shippingOptionsFor(shipping) {
+  if (!shipping) return [];
+
+  const isCents = (value) => Number.isInteger(value) && value >= 0;
+  const options = [];
+
+  if (shipping.freeShipping === true) {
+    options.push({ method: "standard", label: "Standard shipping", cents: 0 });
+  } else if (isCents(shipping.flatRateCents)) {
+    options.push({ method: "standard", label: "Standard shipping", cents: shipping.flatRateCents });
+  }
+
+  if (shipping.expressEnabled === true && isCents(shipping.expressRateCents)) {
+    options.push({ method: "express", label: "Express shipping", cents: shipping.expressRateCents });
+  }
+
+  return options;
+}
+
+// Groups what's being bought by seller and asks the buyer to pick a shipping
+// option for each. Purely presentational: the prices shown come from each
+// seller's own saved shipping settings, but the server recomputes the real
+// shipping cost itself and only trusts the method name chosen here.
+// Resolves to [{ sellerId, method }], or null if the buyer cancels.
+async function chooseShipping(items) {
+  const groups = new Map();
+
+  for (const item of items) {
+    const productSnap = await getDoc(doc(db, "products", item.productId));
+
+    // A product that's gone is reported by the server with a proper message.
+    if (!productSnap.exists()) continue;
+
+    const product = productSnap.data();
+
+    if (!groups.has(product.sellerId)) {
+      groups.set(product.sellerId, { sellerId: product.sellerId, lines: [] });
+    }
+
+    groups.get(product.sellerId).lines.push(`${product.name} \u00d7 ${item.quantity}`);
+  }
+
+  const sellers = [];
+
+  for (const group of groups.values()) {
+    const sellerSnap = await getDoc(doc(db, "users", group.sellerId));
+    const seller = sellerSnap.exists() ? sellerSnap.data() : {};
+
+    sellers.push({
+      ...group,
+      storeName: seller.storeName || "Seller",
+      options: shippingOptionsFor(seller.shipping)
+    });
+  }
+
+  if (sellers.length === 0) return [];
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText =
+      "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2000;overflow:auto;";
+
+    const panel = document.createElement("div");
+    panel.style.cssText =
+      "background:#fff;color:#111;max-width:440px;margin:60px auto;padding:20px;border-radius:10px;";
+
+    const heading = document.createElement("h2");
+    heading.textContent = "Choose shipping";
+    panel.appendChild(heading);
+
+    let blocked = false;
+
+    sellers.forEach((seller, index) => {
+      const box = document.createElement("fieldset");
+      box.style.cssText = "margin:0 0 14px;padding:10px;";
+
+      const legend = document.createElement("legend");
+      legend.textContent = seller.storeName;
+      box.appendChild(legend);
+
+      const list = document.createElement("p");
+      list.style.cssText = "margin:0 0 8px;font-size:14px;";
+      list.textContent = seller.lines.join(", ");
+      box.appendChild(list);
+
+      if (seller.options.length === 0) {
+        blocked = true;
+
+        const note = document.createElement("p");
+        note.style.color = "#b00020";
+        note.textContent =
+          "This seller hasn't set up shipping yet, so their items can't be purchased right now.";
+        box.appendChild(note);
+      }
+
+      seller.options.forEach((option, optionIndex) => {
+        const label = document.createElement("label");
+        label.style.cssText = "display:block;margin-bottom:4px;";
+
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = `shipping_${index}`;
+        radio.value = option.method;
+        radio.checked = optionIndex === 0;
+
+        label.appendChild(radio);
+        label.appendChild(
+          document.createTextNode(
+            ` ${option.label} \u2014 ${option.cents === 0 ? "Free" : formatCents(option.cents)}`
+          )
+        );
+
+        box.appendChild(label);
+      });
+
+      panel.appendChild(box);
+    });
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.marginRight = "10px";
+
+    const continueBtn = document.createElement("button");
+    continueBtn.type = "button";
+    continueBtn.textContent = "Continue to payment";
+    continueBtn.disabled = blocked;
+
+    cancelBtn.addEventListener("click", () => {
+      overlay.remove();
+      resolve(null);
+    });
+
+    continueBtn.addEventListener("click", () => {
+      const selections = sellers.map((seller, index) => {
+        const chosen = panel.querySelector(`input[name="shipping_${index}"]:checked`);
+        return { sellerId: seller.sellerId, method: chosen ? chosen.value : "standard" };
+      });
+
+      overlay.remove();
+      resolve(selections);
+    });
+
+    panel.appendChild(cancelBtn);
+    panel.appendChild(continueBtn);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  });
+}
+
+// Shows the buyer exactly what they're about to pay, per seller. Amounts come
+// straight from the server's response.
+function renderCheckoutSummary(data) {
+  const box = document.getElementById("checkoutSummary");
+  if (!box) return;
+
+  box.textContent = "";
+
+  const title = document.createElement("h3");
+  title.style.cssText = "margin:0 0 10px;font-size:16px;";
+  title.textContent = "Order Summary";
+  box.appendChild(title);
+
+  (data.sellers || []).forEach((seller) => {
+    const line = document.createElement("p");
+    line.style.cssText = "margin:0 0 6px;font-size:14px;";
+
+    let text =
+      `${seller.storeName}: items ${formatCents(seller.productSubtotalCents)}` +
+      ` + shipping ${seller.shippingCents === 0 ? "free" : formatCents(seller.shippingCents)}`;
+
+    if (seller.taxCents > 0) text += ` + tax ${formatCents(seller.taxCents)}`;
+
+    line.textContent = text;
+    box.appendChild(line);
+  });
+
+  const total = document.createElement("p");
+  total.style.cssText = "margin:8px 0 0;font-weight:bold;";
+  total.textContent = `Total: ${formatCents(data.amount)}`;
+  box.appendChild(total);
+}
 
 async function startCheckout(items, cartItemIds, mode) {
   const user = auth.currentUser;
@@ -701,6 +926,10 @@ async function startCheckout(items, cartItemIds, mode) {
   }
 
   try {
+    const shippingSelections = await chooseShipping(items);
+
+    if (!shippingSelections) return; // buyer cancelled
+
     const idToken = await user.getIdToken();
 
     const checkoutId =
@@ -716,7 +945,8 @@ async function startCheckout(items, cartItemIds, mode) {
       body: JSON.stringify({
         checkoutId,
         items,
-        cartItemIds
+        cartItemIds,
+        shippingSelections
       })
     });
 
@@ -730,6 +960,9 @@ async function startCheckout(items, cartItemIds, mode) {
     currentOrderId = data.orderId;
     currentClientSecret = data.clientSecret;
     currentCheckoutMode = mode;
+
+    useCardFor(data.stripeAccountId);
+    renderCheckoutSummary(data);
 
     const modal = document.getElementById("checkoutModal");
     const paymentMessage = document.getElementById("payment-message");
@@ -817,6 +1050,12 @@ if(cardElementContainer){
       )
       .join("");
 
+  // Filled in by renderCheckoutSummary() once the server has priced the order.
+  const summarySection = document.createElement("div");
+  summarySection.id = "checkoutSummary";
+  summarySection.style.marginBottom = "16px";
+
+  cardElementContainer.parentNode.insertBefore(summarySection, cardElementContainer);
   cardElementContainer.parentNode.insertBefore(addressSection, cardElementContainer);
 }
 
@@ -1324,11 +1563,40 @@ if(payBtn){
 
     try {
 
-      const result = await stripe.confirmCardPayment(
+      // Saved server-side before any money moves, so that even if this tab is
+      // closed mid-payment the order Stripe's webhook creates knows where to
+      // ship. If it can't be saved, the card is not charged.
+      if (deliveryAddress) {
+        const saveResponse = await fetch(saveCheckoutAddressURL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
+          },
+          body: JSON.stringify({ orderId: currentOrderId, deliveryAddress })
+        });
+
+        if (!saveResponse.ok) {
+          const saveData = await saveResponse.json().catch(() => ({}));
+
+          if (paymentMessage) {
+            paymentMessage.textContent =
+              saveData.error || "We couldn't save your delivery address. You have not been charged. Please try again.";
+          }
+
+          payBtn.disabled = false;
+          payBtn.textContent = "Pay Now";
+          isPayInFlight = false;
+
+          return;
+        }
+      }
+
+      const result = await activeStripe.confirmCardPayment(
         currentClientSecret,
         {
           payment_method: {
-            card: card
+            card: activeCard
           }
         }
       );
@@ -1398,6 +1666,7 @@ if(payBtn){
       currentOrderId = null;
       currentClientSecret = null;
       currentCheckoutMode = null;
+      resetCheckoutPaymentMethod();
 
       payBtn.disabled = false;
       payBtn.textContent = "Pay Now";
@@ -1450,6 +1719,7 @@ if(closeCheckout){
     currentOrderId = null;
     currentClientSecret = null;
     currentCheckoutMode = null;
+    resetCheckoutPaymentMethod();
 
     const paymentMessage = document.getElementById("payment-message");
     if (paymentMessage) paymentMessage.textContent = "";
@@ -1458,6 +1728,632 @@ if(closeCheckout){
 
 }
 
+
+/* ================= CONNECT ORDERS (one sub-order per seller) =================
+   A checkout now produces one buyer-facing `checkoutOrders` document plus one
+   `sellerOrders` document per seller (see verifyPayment). Buyers and sellers
+   work with the per-seller sub-orders below; older per-product `orders`
+   documents still exist and are shown alongside them, unchanged.
+
+   Every money figure on a sub-order was computed and stored by the server --
+   the builders here only format it, and escape every stored string. */
+
+function timestampToDate(ts) {
+  if (!ts) return null;
+  if (typeof ts.toDate === "function") return ts.toDate();
+  if (typeof ts.seconds === "number") return new Date(ts.seconds * 1000);
+  return new Date(ts);
+}
+
+function orderTimeMs(data) {
+  const date = data ? timestampToDate(data.createdAt) : null;
+  return date ? date.getTime() : 0;
+}
+
+function describeProducts(products) {
+  const [first, ...rest] = products || [];
+
+  if (!first) return "Items";
+
+  return rest.length === 0
+    ? first.name
+    : `${first.name} and ${rest.length} more ${rest.length === 1 ? "item" : "items"}`;
+}
+
+function shippingLineHtml(subOrder) {
+  const kind = subOrder.shippingMethod === "express" ? " (express)" : "";
+
+  return `Shipping${kind}: ${subOrder.shippingCents === 0 ? "Free" : formatCents(subOrder.shippingCents)}`;
+}
+
+function deliveryAddressHtml(addr, heading, showPhone) {
+  if (!addr) return "";
+
+  return `
+    <p><strong>${heading}</strong><br>
+      ${escapeHtml(addr.fullName)}<br>
+      ${escapeHtml(addr.line1)}${addr.line2 ? `<br>${escapeHtml(addr.line2)}` : ""}<br>
+      ${escapeHtml(addr.city)}, ${escapeHtml(addr.state)} ${escapeHtml(addr.zip)}<br>
+      ${escapeHtml(addr.country)}${showPhone && addr.phone ? `<br>Phone: ${escapeHtml(addr.phone)}` : ""}
+    </p>
+  `;
+}
+
+// Single-seller (direct charge) orders: Stripe bills its processing fee to the
+// seller's own account, so the amount shown is before that fee. Multi-seller
+// orders are paid by Lesovia, so nothing is deducted there.
+function earningsFeeNote(subOrder) {
+  return subOrder.chargeType === "direct" ? " (before Stripe processing fees)" : "";
+}
+
+// Dispute state (from Stripe's dispute webhooks) on the seller's order card.
+const DISPUTE_TEXT = {
+  warning_needs_response: "the buyer's bank has raised an inquiry",
+  warning_under_review: "an inquiry from the buyer's bank is under review",
+  warning_closed: "an inquiry from the buyer's bank was closed",
+  needs_response: "the buyer's bank disputed this payment",
+  under_review: "the buyer's bank disputed this payment; it is under review",
+  won: "the buyer's bank disputed this payment; resolved in your favor",
+  lost: "the buyer's bank disputed this payment; not resolved in your favor",
+  charge_refunded: "the payment was refunded, so the dispute was closed"
+};
+
+function disputeLineHtml(subOrder) {
+  if (!subOrder.disputeStatus) return "";
+
+  const text = DISPUTE_TEXT[subOrder.disputeStatus] || "the buyer's bank disputed this payment";
+
+  return `<p style="color:#b00020;"><strong>Payment dispute:</strong> ${escapeHtml(text)}.</p>`;
+}
+
+function payoutLine(subOrder) {
+  if (subOrder.chargeType === "direct") return "Paid to your Stripe balance at checkout";
+
+  if (subOrder.transferStatus === "transferred") return "Sent to your Stripe balance";
+
+  if (subOrder.transferStatus === "failed") return "Transfer to your Stripe balance hasn't gone through yet";
+
+  if (subOrder.transferStatus === "reversed") return "This payment was reversed";
+
+  if (subOrder.transferStatus === "partially_reversed") return "Part of this payment was reversed";
+
+  return "Being sent to your Stripe balance";
+}
+
+/* ================= RETURNS & CANCELLATIONS: what buyers and sellers see ================= */
+// The numbers below only decide what to SHOW (a button, a date). The server
+// enforces the real rules and answers with a clear message if it disagrees.
+// They start as the defaults and are replaced by publicConfig/returnPolicy (the
+// same document the server reads) when the orders load.
+const returnPolicyUi = {
+  returnWindowDays: 7,
+  minDaysAfterShipBeforeWindow: 5,
+  cancelUnshippedAfterDays: 14
+};
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const RETURN_REASONS = {
+  damaged: "Item or package arrived damaged / broken",
+  wrong_item: "I received a different item than I ordered",
+  not_as_described: "Not as described in the listing",
+  too_big: "Too big",
+  too_small: "Too small",
+  not_liked: "I don't like how it looks",
+  other: "Something else"
+};
+
+// Reasons that need at least one photo as evidence.
+const RETURN_PHOTO_REASONS = ["damaged", "wrong_item", "not_as_described"];
+
+function msOf(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  return null;
+}
+
+const formatDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+// The last moment a buyer may start a return. Uses the delivery/shipping times
+// the SERVER stamped (never the seller-typed ones, unless an older order has
+// nothing else), and never counts from before returnPolicyUi.minDaysAfterShipBeforeWindow.
+function returnWindowEndsMs(subOrder) {
+  const delivered = msOf(subOrder.deliveredAtServer) ?? msOf(subOrder.deliveredAt);
+  const shipped = msOf(subOrder.shippedAtServer) ?? msOf(subOrder.shippedAt);
+
+  if (delivered === null) return null;
+
+  const start = Math.max(delivered, shipped !== null ? shipped + returnPolicyUi.minDaysAfterShipBeforeWindow * DAY_MS : delivered);
+
+  return start + returnPolicyUi.returnWindowDays * DAY_MS;
+}
+
+function returnItemsHtml(ret) {
+  return (ret.items || [])
+    .map((item) => `${escapeHtml(item.name)} &times; ${escapeHtml(item.quantity)}`)
+    .join(", ");
+}
+
+function returnPhotosHtml(ret) {
+  return (ret.photos || [])
+    .map((photo) => `
+      <a href="${escapeHtml(photo.url)}" target="_blank" rel="noopener">
+        <img src="${escapeHtml(photo.url)}" alt="Return photo" style="width:64px;height:64px;object-fit:cover;border-radius:6px;margin:0 6px 6px 0;">
+      </a>`)
+    .join("");
+}
+
+// Why it's being returned, in the buyer's own words, with their photos.
+function returnDetailsHtml(ret) {
+  if (ret.kind === "cancellation") {
+    return `<p><small>${escapeHtml(ret.reasonLabel || "Order cancelled")}</small></p>`;
+  }
+
+  return `
+    <p><small>
+      <strong>Returning:</strong> ${returnItemsHtml(ret)}<br>
+      <strong>Reason:</strong> ${escapeHtml(ret.reasonLabel || ret.reason)}<br>
+      ${ret.description ? `<strong>Buyer's note:</strong> ${escapeHtml(ret.description)}` : ""}
+    </small></p>
+    ${returnPhotosHtml(ret) ? `<div>${returnPhotosHtml(ret)}</div>` : ""}
+  `;
+}
+
+// What comes back to the buyer, and what doesn't.
+function refundBreakdownHtml(plan) {
+  if (!plan) return "";
+
+  if (plan.mode === "full") {
+    return `<p><small>Full refund: <strong>${formatCents(plan.buyerRefundCents)}</strong>.</small></p>`;
+  }
+
+  return `
+    <p><small>
+      Refund: <strong>${formatCents(plan.buyerRefundCents)}</strong> of the ${formatCents(plan.grossCents)} paid for these items.<br>
+      Not refunded: Lesovia's service fee (${formatCents(plan.commissionKeptCents)}) and the payment processing fee (${formatCents(plan.stripeFeeWithheldCents)}).
+    </small></p>
+  `;
+}
+
+function returnActionButton(label, handler, id, extraClass = "") {
+  return `<button type="button" class="rt-btn ${extraClass}" onclick="${handler}('${escapeHtml(id)}')">${escapeHtml(label)}</button>`;
+}
+
+// The buyer's return / cancel section under one sub-order.
+function buyerReturnHtml(id, subOrder, ret, nowMs = Date.now()) {
+  const wrap = (inner) => `<div class="rt-box">${inner}</div>`;
+
+  if (ret) {
+    const rid = ret.id;
+    const cancelled = ret.kind === "cancellation";
+    let body = "";
+
+    switch (ret.status) {
+      case "requested":
+        body = `<p><strong>Return requested.</strong> Waiting for the seller to respond${ret.sellerRespondByMs ? ` (by ${formatDay(ret.sellerRespondByMs)}; after that, Lesovia decides)` : ""}.</p>
+          ${returnActionButton("Cancel request", "cancelReturnRequest", rid, "rt-secondary")}`;
+        break;
+
+      case "approved":
+        body = `<p><strong>Return approved.</strong> Send it back${ret.shipDeadlineMs ? ` by <strong>${formatDay(ret.shipDeadlineMs)}</strong>` : ""}, then add your tracking number. You pay the return shipping.</p>
+          ${deliveryAddressHtml(subOrder.returnAddress, "Send it to:", false) ||
+            "<p><small>The seller didn't share a return address. Please contact them through Messages before sending anything.</small></p>"}
+          ${returnActionButton("Add tracking number", "addReturnTracking", rid)}
+          ${returnActionButton("Cancel request", "cancelReturnRequest", rid, "rt-secondary")}`;
+        break;
+
+      case "declined":
+        body = `<p><strong>Return declined.</strong> ${ret.decisionNote ? `Reason: ${escapeHtml(ret.decisionNote)}` : ""}</p>
+          ${ret.declinedBy === "seller" ? returnActionButton("Ask Lesovia to review", "escalateReturnRequest", rid) : ""}`;
+        break;
+
+      case "escalated":
+        body = `<p><strong>Lesovia is reviewing your return.</strong> We'll notify you as soon as there's a decision.</p>`;
+        break;
+
+      case "shipped_back":
+        body = `<p><strong>On its way back.</strong> ${ret.returnTracking ? `${escapeHtml(ret.returnTracking.carrier)} ${escapeHtml(ret.returnTracking.trackingNumber)}. ` : ""}Your refund is sent as soon as the seller confirms it arrived.</p>`;
+        break;
+
+      case "problem_reported":
+        body = `<p><strong>Lesovia is checking on your returned package.</strong> We'll be in touch.</p>`;
+        break;
+
+      case "queued":
+      case "refunding":
+      case "refund_failed":
+        body = `<p><strong>Your refund is being processed.</strong>${ret.status === "refund_failed" ? " It's taking longer than usual; Lesovia is looking into it." : ""}</p>`;
+        break;
+
+      case "refunded":
+        body = `<p><strong>${cancelled ? "Order cancelled and refunded" : "Refunded"}: ${formatCents(ret.plan.buyerRefundCents)}.</strong>
+            Your bank usually shows it within 5 to 10 business days.</p>
+          ${refundBreakdownHtml(ret.plan)}`;
+        break;
+
+      case "rejected":
+        body = `<p><strong>Closed without a refund.</strong> ${ret.decisionNote ? escapeHtml(ret.decisionNote) : ""}</p>`;
+        break;
+
+      default:
+        return "";
+    }
+
+    return wrap(`<h4>${cancelled ? "Cancellation" : "Return"}</h4>${body}${returnDetailsHtml(ret)}`);
+  }
+
+  if (subOrder.fulfillmentStatus === "delivered") {
+    const endsMs = returnWindowEndsMs(subOrder);
+
+    if (endsMs === null) return "";
+
+    if (nowMs <= endsMs) {
+      return wrap(`
+        <p>Not right? You can return this until <strong>${formatDay(endsMs)}</strong>.</p>
+        ${returnActionButton("Return items", "openReturnModal", id, "rt-secondary")}
+      `);
+    }
+
+    return wrap(`<p><small>The ${returnPolicyUi.returnWindowDays}-day return period for this order ended on ${formatDay(endsMs)}.</small></p>`);
+  }
+
+  if (subOrder.fulfillmentStatus === "paid") {
+    const createdMs = msOf(subOrder.createdAt);
+
+    if (createdMs === null) return "";
+
+    const availableMs = createdMs + returnPolicyUi.cancelUnshippedAfterDays * DAY_MS;
+
+    if (nowMs >= availableMs) {
+      return wrap(`
+        <p>The seller hasn't shipped this order in ${returnPolicyUi.cancelUnshippedAfterDays} days. You can cancel it for a full refund.</p>
+        ${returnActionButton("Cancel order", "cancelUnshipped", id, "rt-danger")}
+      `);
+    }
+
+    return wrap(`<p><small>If the seller still hasn't shipped this by ${formatDay(availableMs)}, you'll be able to cancel it for a full refund.</small></p>`);
+  }
+
+  return "";
+}
+
+// The seller's view of a return on one of their sub-orders.
+function sellerReturnHtml(id, subOrder, ret) {
+  if (!ret) return "";
+
+  const rid = ret.id;
+  const cancelled = ret.kind === "cancellation";
+  let body = "";
+
+  switch (ret.status) {
+    case "requested":
+      body = `<p><strong>The buyer wants to return this.</strong> ${ret.sellerRespondByMs ? `Please respond by ${formatDay(ret.sellerRespondByMs)}; after that Lesovia decides.` : ""}</p>
+        ${refundBreakdownHtml(ret.plan)}
+        ${returnActionButton("Approve return", "approveReturn", rid)}
+        ${returnActionButton("Decline", "declineReturn", rid, "rt-danger")}`;
+      break;
+
+    case "approved":
+      body = `<p><strong>Return approved.</strong> Waiting for the buyer to send it back${ret.shipDeadlineMs ? ` (they have until ${formatDay(ret.shipDeadlineMs)})` : ""}.</p>`;
+      break;
+
+    case "declined":
+      body = `<p><strong>You declined this return.</strong> The buyer can ask Lesovia to review it.</p>`;
+      break;
+
+    case "escalated":
+    case "problem_reported":
+      body = `<p><strong>Lesovia is reviewing this return.</strong> You don't need to do anything.</p>`;
+      break;
+
+    case "shipped_back":
+      body = `<p><strong>The buyer sent it back.</strong> ${ret.returnTracking ? `${escapeHtml(ret.returnTracking.carrier)} ${escapeHtml(ret.returnTracking.trackingNumber)}.` : ""}
+          When it arrives, confirm it to send the buyer's refund${ret.receiptDeadlineMs ? ` (please do so by ${formatDay(ret.receiptDeadlineMs)})` : ""}.</p>
+        ${refundBreakdownHtml(ret.plan)}
+        ${returnActionButton("I received it - send the refund", "confirmReturnReceivedUi", rid)}
+        ${returnActionButton("Report a problem", "reportReturnProblemUi", rid, "rt-danger")}`;
+      break;
+
+    case "queued":
+    case "refunding":
+      body = `<p><strong>Refund being sent.</strong></p>`;
+      break;
+
+    case "refund_failed":
+      body = `<p><strong>The refund couldn't be sent.</strong> Lesovia has been notified and will sort it out.</p>`;
+      break;
+
+    case "refunded":
+      body = `<p><strong>${cancelled ? "Order cancelled" : "Return completed"}.</strong> The buyer was refunded ${formatCents(ret.plan.buyerRefundCents)}.</p>`;
+      break;
+
+    case "rejected":
+      body = `<p><strong>Closed by Lesovia without a refund.</strong></p>`;
+      break;
+
+    default:
+      return "";
+  }
+
+  return `<div class="rt-box"><h4>${cancelled ? "Cancellation" : "Return"}</h4>${body}${returnDetailsHtml(ret)}</div>`;
+}
+
+// One seller's slice of a purchase, as the BUYER sees it. `reviewsByProduct`
+// maps productId -> the buyer's existing review for it (delivered orders only).
+function buyerSubOrderHtml(id, subOrder, reviewsByProduct, ret) {
+  const delivered = subOrder.fulfillmentStatus === "delivered";
+  const created = timestampToDate(subOrder.createdAt);
+
+  const productsHtml = (subOrder.products || [])
+    .map((product) => {
+      const image = product.image
+        ? `<img src="${escapeHtml(product.image)}" style="width:90px;height:90px;flex-shrink:0;object-fit:cover;border-radius:8px;">`
+        : `<div style="width:90px;height:90px;flex-shrink:0;background:var(--lv-canvas,#F6F8F6);border:1px solid var(--lv-line,#E2E8E4);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--lv-slate,#5B6B62);">No image</div>`;
+
+      const variant = [product.color, product.size].filter(Boolean).map(escapeHtml).join(" / ");
+      const reviewKey = escapeHtml(`${id}-${product.productId}`);
+
+      let reviewHtml = "";
+
+      if (delivered) {
+        const review = reviewsByProduct.get(product.productId);
+
+        if (review) {
+          reviewHtml = `
+            <span style="color:green;"><strong>&#10003; Reviewed</strong></span>
+            <button onclick="toggleReview('${reviewKey}')">View My Review</button>
+            <div id="review-${reviewKey}" style="display:none; margin-top:10px;">
+              <p>${"&#9733;".repeat(review.rating)}${"&#9734;".repeat(5 - review.rating)}</p>
+              <p>${escapeHtml(review.comment)}</p>
+              <div>${(review.photos || []).map((photo) => `
+                <a href="${escapeHtml(photo.url)}" target="_blank" rel="noopener">
+                  <img src="${escapeHtml(photo.url)}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;margin:0 6px 6px 0;">
+                </a>
+              `).join("")}</div>
+            </div>
+          `;
+        } else {
+          reviewHtml = `
+            <button onclick="window.location.href='reviews.html?productId=${encodeURIComponent(product.productId)}&orderId=${encodeURIComponent(id)}'">
+              Leave Review
+            </button>
+          `;
+        }
+      }
+
+      return `
+        <div style="display:flex;gap:12px;margin-bottom:12px;">
+          ${image}
+          <div>
+            <strong>${escapeHtml(product.name)}</strong><br>
+            Qty ${escapeHtml(product.quantity)} &times; ${formatCents(product.unitPriceCents)}
+            ${variant ? `<br>${variant}` : ""}
+            ${reviewHtml ? `<br>${reviewHtml}` : ""}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <div
+      id="order-${escapeHtml(id)}"
+      class="order-details"
+      data-checkout-id="${escapeHtml(subOrder.checkoutId)}"
+    >
+      <h3>${escapeHtml(describeProducts(subOrder.products))}</h3>
+      ${subOrder.storeName ? `<p>Sold by ${escapeHtml(subOrder.storeName)}</p>` : ""}
+
+      <p><strong>Order #:</strong> ${escapeHtml(subOrder.orderNumber || id)}</p>
+      <p><strong>Date Ordered:</strong> ${created ? created.toLocaleString() : "N/A"}</p>
+
+      ${productsHtml}
+
+      <p>Items: ${formatCents(subOrder.productSubtotalCents)}<br>${shippingLineHtml(subOrder)}</p>
+      ${subOrder.taxCents > 0 ? `<p>Tax: ${formatCents(subOrder.taxCents)}</p>` : ""}
+      <p><strong>Total:</strong> ${formatCents(subOrder.buyerTotalCents)}</p>
+      ${subOrder.refundedAmountCents > 0 ? `<p>Refunded: ${formatCents(subOrder.refundedAmountCents)}</p>` : ""}
+
+      <p class="order-status status-${escapeHtml(subOrder.fulfillmentStatus)}">
+        <strong>Status:</strong> ${escapeHtml(subOrder.fulfillmentStatus)}
+      </p>
+
+      ${subOrder.trackingNumber ? `<p><strong>Tracking #:</strong> ${escapeHtml(subOrder.trackingNumber)}</p>` : ""}
+      ${deliveryAddressHtml(subOrder.deliveryAddress, "Delivering to:", false)}
+      ${buyerReturnHtml(id, subOrder, ret)}
+    </div>
+  `;
+}
+
+// One sub-order in the SELLER's order list, with what they earn from it.
+function sellerSubOrderHtml(id, subOrder, buyerName, ret) {
+  const status = subOrder.fulfillmentStatus;
+  const idAttr = escapeHtml(id);
+
+  let buttons = "";
+
+  if (status === "paid") {
+    buttons =
+      `<button onclick="markShipped('${idAttr}','sub')">Ship</button> ` +
+      `<button onclick="markDelivered('${idAttr}','sub')">Deliver</button>`;
+  } else if (status === "shipped") {
+    buttons = `<button onclick="markDelivered('${idAttr}','sub')">Deliver</button>`;
+  }
+
+  const statusColor =
+    status === "paid" ? "orange" : status === "shipped" ? "blue" : status === "delivered" ? "green" : "black";
+
+  const created = timestampToDate(subOrder.createdAt);
+  const deliveredAt = timestampToDate(subOrder.deliveredAt);
+
+  const deliveryInfo =
+    created && deliveredAt
+      ? `<br><small>Delivered in ${Math.floor((deliveredAt - created) / (1000 * 60 * 60 * 24))} day(s)</small>`
+      : "";
+
+  const trackingHtml =
+    status === "shipped" || status === "delivered"
+      ? `
+        <p>
+          <strong>Tracking #:</strong> ${escapeHtml(subOrder.trackingNumber) || "Not added yet"}
+          <button onclick="editTrackingNumber('${idAttr}','sub')" class="btn-sm">
+            ${subOrder.trackingNumber ? "Edit" : "Add"}
+          </button>
+        </p>
+      `
+      : "";
+
+  const firstImage = subOrder.products && subOrder.products[0] && subOrder.products[0].image;
+
+  const imageHtml = firstImage
+    ? `<img src="${escapeHtml(firstImage)}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;">`
+    : `<div style="width:60px;height:60px;border-radius:8px;background:var(--lv-canvas,#F6F8F6);border:1px solid var(--lv-line,#E2E8E4);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--lv-slate,#5B6B62);text-align:center;">No image</div>`;
+
+  const productsHtml = (subOrder.products || [])
+    .map(
+      (product) => `
+        <p>
+          <strong>${escapeHtml(product.name)}</strong> &times; ${escapeHtml(product.quantity)}
+          ${product.color ? ` &middot; Color: ${escapeHtml(product.color)}` : ""}
+          ${product.size ? ` &middot; Size: ${escapeHtml(product.size)}` : ""}
+        </p>
+      `
+    )
+    .join("");
+
+  const commissionPercent = Math.round((Number(subOrder.commissionRate) || 0) * 100);
+
+  return `
+    <li id="order-${idAttr}" style="display:flex; align-items:flex-start; gap:15px; margin-bottom:15px;">
+
+      ${imageHtml}
+
+      <div>
+        <p><strong>Order #:</strong> ${escapeHtml(subOrder.orderNumber || id)}</p>
+        <p><strong>Buyer:</strong> ${escapeHtml(buyerName)}</p>
+        <p><small style="color:gray;">${created ? created.toLocaleString() : "Unknown date"}</small></p>
+
+        <p>
+          Status:
+          <span style="color:${statusColor};font-weight:bold;">${escapeHtml(status)}</span>
+        </p>
+
+        ${productsHtml}
+
+        <p>
+          Items: ${formatCents(subOrder.productSubtotalCents)}<br>
+          ${shippingLineHtml(subOrder)}<br>
+          ${subOrder.taxCents > 0 ? `Tax collected: ${formatCents(subOrder.taxCents)} (not part of your earnings)<br>` : ""}
+          Lesovia commission (${commissionPercent}%): -${formatCents(subOrder.commissionAmountCents)}<br>
+          <strong>Your earnings: ${formatCents(subOrder.sellerProceedsCents)}${earningsFeeNote(subOrder)}</strong>
+        </p>
+        <p><small>${payoutLine(subOrder)}</small></p>
+        ${disputeLineHtml(subOrder)}
+        ${subOrder.refundedAmountCents > 0 ? `<p>Refunded to buyer: ${formatCents(subOrder.refundedAmountCents)}</p>` : ""}
+
+        ${deliveryAddressHtml(subOrder.deliveryAddress, "Ship to:", true) ||
+          `<p><small style="color:gray;">No delivery address provided.</small></p>`}
+
+        ${trackingHtml}
+
+        ${deliveryInfo}
+
+        ${sellerReturnHtml(id, subOrder, ret)}
+
+        <br>
+
+        ${buttons}
+      </div>
+
+    </li>
+  `;
+}
+
+// One sub-order in the seller's sold-items history.
+function soldSubOrderHtml(subOrder, buyer) {
+  const status = subOrder.fulfillmentStatus;
+
+  const badgeClass =
+    status === "paid" ? "badge-warning" : status === "shipped" ? "badge-info" : status === "delivered" ? "badge-success" : "badge-neutral";
+
+  const created = timestampToDate(subOrder.createdAt);
+  const firstImage = (subOrder.products && subOrder.products[0] && subOrder.products[0].image) || "";
+
+  const itemsText = (subOrder.products || [])
+    .map((product) => {
+      const variant = [product.color, product.size].filter(Boolean).map(escapeHtml).join(", ");
+      return `${escapeHtml(product.name)} &times; ${escapeHtml(product.quantity)}${variant ? ` (${variant})` : ""}`;
+    })
+    .join("; ");
+
+  const buyerName = escapeHtml(buyer.fullName || "Unknown buyer");
+  const buyerEmail = buyer.email ? ` (${escapeHtml(buyer.email)})` : "";
+
+  return `
+    <div class="sold-item-card">
+      <img src="${escapeHtml(firstImage)}" class="sold-item-img" alt="">
+
+      <div class="sold-item-info">
+        <div class="sold-item-header">
+          <h3>${escapeHtml(describeProducts(subOrder.products))}</h3>
+          <span class="badge ${badgeClass}">${escapeHtml(String(status || "unknown").toUpperCase())}</span>
+        </div>
+
+        <p><strong>Purchased:</strong> ${created ? created.toLocaleString() : "N/A"}</p>
+        <p><strong>Items:</strong> ${itemsText}</p>
+        <p><strong>Buyer:</strong> ${buyerName}${buyerEmail}</p>
+        <p><strong>Total paid:</strong> ${formatCents(subOrder.buyerTotalCents)} &middot; <strong>Your earnings:</strong> ${formatCents(subOrder.sellerProceedsCents)}${earningsFeeNote(subOrder)}</p>
+      </div>
+    </div>
+  `;
+}
+
+// Puts a sub-order card on the buyer's page, first looking up whether they've
+// already reviewed each product (only matters once it's delivered).
+async function appendBuyerSubOrder(orderList, docSnap, selectedOrderId, highlight) {
+  const subOrder = docSnap.data();
+  const reviewsByProduct = new Map();
+
+  if (subOrder.fulfillmentStatus === "delivered") {
+    for (const product of subOrder.products || []) {
+      const reviewSnapshot = await getDocs(
+        query(
+          collection(db, "reviews"),
+          where("productId", "==", product.productId),
+          where("buyerId", "==", auth.currentUser.uid)
+        )
+      );
+
+      if (!reviewSnapshot.empty) reviewsByProduct.set(product.productId, reviewSnapshot.docs[0].data());
+    }
+  }
+
+  subOrderCache.set(docSnap.id, subOrder);
+
+  orderList.insertAdjacentHTML(
+    "beforeend",
+    buyerSubOrderHtml(docSnap.id, subOrder, reviewsByProduct, buyerReturns.get(docSnap.id))
+  );
+
+  // A purchase can span several sellers; the link from checkout and from
+  // notifications names the whole checkout, so highlight all of its cards.
+  if (selectedOrderId && (selectedOrderId === docSnap.id || selectedOrderId === subOrder.checkoutId)) {
+    const card = document.getElementById(`order-${docSnap.id}`);
+
+    if (card) {
+      card.classList.add("highlight-order");
+
+      if (!highlight.scrolled) {
+        highlight.scrolled = true;
+        setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+      }
+
+      setTimeout(() => card.classList.remove("highlight-order"), 5000);
+    }
+  }
+}
 
 /* ================= CUSTOMER ORDERS ================= */
 async function loadMyOrders() {
@@ -1469,12 +2365,30 @@ async function loadMyOrders() {
   const orderList = document.getElementById("orderList");
   if (!orderList || !auth.currentUser) return;
 
-  const q = query(collection(db, "orders"), where("userId", "==", auth.currentUser.uid));
-  const snapshot = await getDocs(q);
+  // Older per-product orders and newer per-seller sub-orders, together,
+  // newest first.
+  const [legacySnapshot, subOrderSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "orders"), where("userId", "==", auth.currentUser.uid))),
+    getDocs(query(collection(db, "sellerOrders"), where("buyerId", "==", auth.currentUser.uid)))
+  ]);
+
+  const entries = [
+    ...legacySnapshot.docs.map((docSnap) => ({ kind: "legacy", docSnap })),
+    ...subOrderSnapshot.docs.map((docSnap) => ({ kind: "sub", docSnap }))
+  ].sort((a, b) => orderTimeMs(b.docSnap.data()) - orderTimeMs(a.docSnap.data()));
+
+  buyerReturns = await fetchReturnsMap("buyerId");
 
   orderList.innerHTML = "";
 
-  for (const docSnap of snapshot.docs) {
+  const highlight = { scrolled: false };
+
+  for (const { kind, docSnap } of entries) {
+    if (kind === "sub") {
+      await appendBuyerSubOrder(orderList, docSnap, selectedOrderId, highlight);
+      continue;
+    }
+
     const order = docSnap.data();
 
     // Product info: prefer the snapshot stored on the order at purchase
@@ -1659,6 +2573,22 @@ function loadSellerProducts() {
   onSnapshot(q, async (snapshot) => {
     sellerProducts.innerHTML = "";
 
+    // Units sold through newer per-seller sub-orders, per product -- read
+    // once for the whole list rather than once per product.
+    const subOrderUnitsSold = new Map();
+    const subOrdersSnap = await getDocs(
+      query(collection(db, "sellerOrders"), where("sellerId", "==", auth.currentUser.uid))
+    );
+
+    subOrdersSnap.forEach(subOrderDoc => {
+      (subOrderDoc.data().products || []).forEach(orderedProduct => {
+        subOrderUnitsSold.set(
+          orderedProduct.productId,
+          (subOrderUnitsSold.get(orderedProduct.productId) || 0) + (Number(orderedProduct.quantity) || 0)
+        );
+      });
+    });
+
     for (const docSnap of snapshot.docs) {
       const product = docSnap.data();
 
@@ -1686,10 +2616,14 @@ function loadSellerProducts() {
       // (see verifyPayment), so this is an accurate historical count even
       // if the product has since been restocked.
       const ordersSnap = await getDocs(
-        query(collection(db, "orders"), where("productId", "==", docSnap.id))
+        query(
+          collection(db, "orders"),
+          where("productId", "==", docSnap.id),
+          where("sellerId", "==", auth.currentUser.uid)
+        )
       );
 
-      let totalSold = 0;
+      let totalSold = subOrderUnitsSold.get(docSnap.id) || 0;
       ordersSnap.forEach(orderDoc => {
         totalSold += Number(orderDoc.data().quantity) || 0;
       });
@@ -2690,19 +3624,42 @@ async function loadSellerOrders() {
   const sellerOrders = document.getElementById("sellerOrders");
   if (!sellerOrders || !auth.currentUser) return;
 
-  const q = query(collection(db, "orders"), where("sellerId", "==", auth.currentUser.uid));
-  const snapshot = await getDocs(q);
+  // Older per-product orders and newer per-seller sub-orders, together,
+  // newest first.
+  const [legacySnapshot, subOrderSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "orders"), where("sellerId", "==", auth.currentUser.uid))),
+    getDocs(query(collection(db, "sellerOrders"), where("sellerId", "==", auth.currentUser.uid)))
+  ]);
+
+  sellerReturns = await fetchReturnsMap("sellerId");
 
   sellerOrders.innerHTML = "";
 
-  const sortedOrderDocs = snapshot.docs.slice().sort((a, b) => {
-      const aTime = a.data().createdAt ? a.data().createdAt.toMillis() : 0;
-      const bTime = b.data().createdAt ? b.data().createdAt.toMillis() : 0;
-      return bTime - aTime;
-  });
+  const sortedEntries = [
+    ...legacySnapshot.docs.map((docSnap) => ({ kind: "legacy", docSnap })),
+    ...subOrderSnapshot.docs.map((docSnap) => ({ kind: "sub", docSnap }))
+  ].sort((a, b) => orderTimeMs(b.docSnap.data()) - orderTimeMs(a.docSnap.data()));
 
       //NEW FUNCTION FOR IT TO INCLUDE BUYER NAME, COLOR, AND QUATITY ORDER//
-      for (const docSnap of sortedOrderDocs) {
+      for (const { kind, docSnap } of sortedEntries) {
+
+        if (kind === "sub") {
+          const subOrder = docSnap.data();
+          const subBuyerSnap = await getDoc(doc(db, "users", subOrder.buyerId));
+          const subBuyer = subBuyerSnap.exists() ? subBuyerSnap.data() : {};
+
+          sellerOrders.insertAdjacentHTML(
+            "beforeend",
+            sellerSubOrderHtml(
+              docSnap.id,
+              subOrder,
+              subBuyer.fullName || subBuyer.name || subBuyer.email || "Unknown Buyer",
+              sellerReturns.get(docSnap.id)
+            )
+          );
+
+          continue;
+        }
 
         const order = docSnap.data();
     
@@ -2897,27 +3854,618 @@ async function loadSellerOrders() {
   }
 }
 
-// ================= SHIP ORDER =================
-window.markShipped = async (orderId) => {
+// ================= SHIP / DELIVER / TRACKING =================
+// Each of these applies either to an older per-product order (the default) or,
+// when kind === "sub", to one seller's sub-order of a newer checkout. The two
+// differ in where they live, what their status field is called, who the buyer
+// is, and which order the buyer's notification should open.
+function orderTarget(orderId, kind) {
+  const isSub = kind === "sub";
+
+  return {
+    isSub,
+    ref: doc(db, isSub ? "sellerOrders" : "orders", orderId),
+    statusField: isSub ? "fulfillmentStatus" : "status"
+  };
+}
+
+async function productNameForNotification(order, isSub) {
+  if (isSub) return describeProducts(order.products);
+
+  const productSnap = await getDoc(doc(db, "products", order.productId));
+
+  return productSnap.exists() ? productSnap.data().name : "Unknown Product";
+}
+
+function notifyBuyerOfOrder(order, isSub, orderId, notification) {
+  return addDoc(collection(db, "notifications"), {
+    userId: isSub ? order.buyerId : order.userId,
+    ...notification,
+    link: `order.html?orderId=${isSub ? order.checkoutId : orderId}`,
+    read: false,
+    createdAt: serverTimestamp()
+  });
+}
+
+/* ================= RETURNS & CANCELLATIONS: forms and actions ================= */
+const FUNCTIONS_BASE = "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/";
+
+// Every return action goes through a Cloud Function, which decides whether it's
+// allowed and moves the money -- the browser never writes a return itself.
+async function returnsApi(name, body) {
+  const user = auth.currentUser;
+
+  if (!user) throw new Error("Please sign in first.");
+
+  const response = await fetch(FUNCTIONS_BASE + name, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${await user.getIdToken()}`
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+
+  return data;
+}
+
+// The sub-orders on the page, so a button only needs to carry an id.
+const subOrderCache = new Map();
+
+// Pulls the policy numbers the server enforces, so the dates and buttons shown
+// here match it. A missing document or an odd value just leaves the defaults.
+async function loadReturnPolicyUi() {
   try {
-    //july 22, new try//
-    const orderSnap = await getDoc(doc(db, "orders", orderId));
+    const snap = await getDoc(doc(db, "publicConfig", "returnPolicy"));
+
+    if (!snap.exists()) return;
+
+    for (const key of Object.keys(returnPolicyUi)) {
+      const value = snap.data()[key];
+
+      if (Number.isFinite(value) && value >= 0) returnPolicyUi[key] = value;
+    }
+  } catch (err) {
+    console.error("Could not load the return policy:", err);
+  }
+}
+
+async function fetchReturnsMap(field) {
+  const map = new Map();
+
+  // The return panels on the order cards use these styles, not just the dialogs.
+  injectReturnStyles();
+  await loadReturnPolicyUi();
+
+  if (!auth.currentUser) return map;
+
+  try {
+    const snapshot = await getDocs(query(collection(db, "returns"), where(field, "==", auth.currentUser.uid)));
+
+    // Newest first; a withdrawn or lapsed request doesn't count as "the" return.
+    const list = snapshot.docs
+      .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+      .sort((a, b) => (b.requestedMs || 0) - (a.requestedMs || 0));
+
+    for (const ret of list) {
+      if (!map.has(ret.sellerOrderId) && !["cancelled", "expired"].includes(ret.status)) {
+        map.set(ret.sellerOrderId, ret);
+      }
+    }
+  } catch (err) {
+    console.error("Could not load returns:", err);
+  }
+
+  return map;
+}
+
+let buyerReturns = new Map();
+let sellerReturns = new Map();
+
+// ---- a tiny DOM builder (text is always set as text, never as HTML) ----
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "class") node.className = value;
+    else if (key === "style") node.style.cssText = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (value === true) node.setAttribute(key, "");
+    else if (value !== false && value !== null && value !== undefined) node.setAttribute(key, value);
+  }
+
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+
+  return node;
+}
+
+function injectReturnStyles() {
+  if (document.getElementById("returnUiStyles")) return;
+
+  const style = document.createElement("style");
+  style.id = "returnUiStyles";
+  style.textContent = `
+    .rt-box { margin:12px 0; padding:12px 14px; border:1px solid var(--lv-line,#E2E8E4); border-radius:10px; background:var(--lv-canvas,#F6F8F6); max-width:640px; }
+    .rt-box h4 { margin:0 0 6px; }
+    /* :is(...) button.rt-btn outranks page-level rules like button[onclick]. */
+    :is(.rt-box, .rt-modal) button.rt-btn { margin:4px 6px 4px 0; padding:8px 14px; border-radius:8px; border:1px solid transparent; cursor:pointer; font:inherit; background:var(--lv-green,#0B7A3D); color:#fff; }
+    :is(.rt-box, .rt-modal) button.rt-btn:hover { background:var(--lv-green-deep,#086030); }
+    :is(.rt-box, .rt-modal) button.rt-btn.rt-secondary { background:#fff; color:inherit; border-color:var(--lv-line,#CBD5CE); }
+    :is(.rt-box, .rt-modal) button.rt-btn.rt-secondary:hover { background:var(--lv-canvas,#F6F8F6); }
+    :is(.rt-box, .rt-modal) button.rt-btn.rt-danger { background:#fff; color:var(--lv-danger,#C6362E); border-color:var(--lv-danger,#C6362E); }
+    :is(.rt-box, .rt-modal) button.rt-btn.rt-danger:hover { background:var(--lv-danger-mist,#FBE9E8); }
+    :is(.rt-box, .rt-modal) button.rt-btn[disabled] { opacity:.6; cursor:default; }
+    .rt-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:10000; display:flex; align-items:flex-start; justify-content:center; overflow:auto; padding:24px 12px; }
+    .rt-modal { background:#fff; color:#1b1b1b; border-radius:12px; width:100%; max-width:560px; padding:20px 22px; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+    .rt-modal h3 { margin:0 0 6px; }
+    .rt-field { margin:12px 0; }
+    .rt-field label { display:block; font-weight:600; margin-bottom:4px; }
+    .rt-field input[type=text], .rt-field select, .rt-field textarea { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #cbd5ce; border-radius:8px; font:inherit; }
+    .rt-field textarea { min-height:90px; }
+    .rt-help { font-size:13px; color:#5b6b62; margin:4px 0 0; }
+    .rt-error { color:var(--lv-danger,#C6362E); font-size:14px; margin:8px 0 0; min-height:1em; }
+    .rt-notice { background:#fff8e6; border:1px solid #f0d58a; border-radius:8px; padding:10px 12px; font-size:14px; margin:12px 0; }
+    .rt-actions { margin-top:16px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+    .rt-item { display:flex; align-items:center; gap:8px; margin:6px 0; }
+    .rt-item select { width:auto; }
+  `;
+  document.head.appendChild(style);
+}
+
+// Shows `build(box, close)` in a centred dialog. Returns a function that closes it.
+function openModal(build) {
+  injectReturnStyles();
+
+  const box = el("div", { class: "rt-modal", role: "dialog", "aria-modal": "true" });
+  const overlay = el("div", { class: "rt-overlay" }, box);
+  const close = () => overlay.remove();
+
+  build(box, close);
+  document.body.appendChild(overlay);
+
+  return close;
+}
+
+// A simple form in a dialog. Resolves with { fieldName: value } or null if cancelled.
+function openFormModal({ title, intro, fields, submitLabel = "Submit", cancelLabel = "Cancel" }) {
+  return new Promise((resolve) => {
+    openModal((box, close) => {
+      const inputs = {};
+      const error = el("p", { class: "rt-error" });
+
+      const finish = (value) => { close(); resolve(value); };
+
+      const fieldNodes = fields.map((field) => {
+        let input;
+
+        if (field.type === "textarea") {
+          input = el("textarea", { maxlength: field.maxLength || 500, placeholder: field.placeholder || "" });
+        } else if (field.type === "select") {
+          input = el("select", {}, field.options.map(([value, label]) => el("option", { value }, label)));
+        } else {
+          input = el("input", { type: "text", maxlength: field.maxLength || 200, placeholder: field.placeholder || "" });
+        }
+
+        if (field.value) input.value = field.value;
+
+        inputs[field.name] = input;
+
+        return el("div", { class: "rt-field" },
+          el("label", {}, field.label + (field.required ? " *" : "")),
+          input,
+          field.help ? el("p", { class: "rt-help" }, field.help) : null
+        );
+      });
+
+      box.append(
+        el("h3", {}, title),
+        intro ? el("p", {}, intro) : null,
+        ...fieldNodes,
+        error,
+        el("div", { class: "rt-actions" },
+          el("button", { type: "button", class: "rt-btn rt-secondary", onclick: () => finish(null) }, cancelLabel),
+          el("button", {
+            type: "button",
+            class: "rt-btn",
+            onclick: () => {
+              const values = {};
+
+              for (const field of fields) {
+                values[field.name] = inputs[field.name].value.trim();
+
+                if (field.required && !values[field.name]) {
+                  error.textContent = `Please fill in: ${field.label}.`;
+                  inputs[field.name].focus();
+                  return;
+                }
+              }
+
+              finish(values);
+            }
+          }, submitLabel)
+        )
+      );
+
+      const first = fields.length ? inputs[fields[0].name] : null;
+      if (first) setTimeout(() => first.focus(), 0);
+    });
+  });
+}
+
+// Runs an action, shows any error as an alert, then refreshes the list.
+async function runReturnAction(action, refresh, successMessage) {
+  try {
+    const result = await action();
+
+    if (successMessage) alert(typeof successMessage === "function" ? successMessage(result) : successMessage);
+
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+const refreshBuyerOrders = () => loadMyOrders();
+const refreshSellerOrders = () => loadSellerOrders();
+
+// ---------------- buyer ----------------
+window.openReturnModal = async (sellerOrderId) => {
+  const subOrder = subOrderCache.get(sellerOrderId);
+
+  if (!subOrder) {
+    alert("Please refresh the page and try again.");
+    return;
+  }
+
+  const lines = subOrder.products || [];
+  const returnId = (window.crypto && crypto.randomUUID && crypto.randomUUID()) || `${auth.currentUser.uid}-${Date.now()}`;
+
+  const itemRows = lines.map((line, lineIndex) => {
+    const check = el("input", { type: "checkbox", checked: true });
+    const qty = el("select", {}, Array.from({ length: line.quantity }, (_, i) => el("option", { value: i + 1 }, i + 1)));
+    qty.value = String(line.quantity);
+    return { line, lineIndex, check, qty };
+  });
+
+  const reason = el("select", {}, [
+    el("option", { value: "" }, "Choose a reason..."),
+    ...Object.entries(RETURN_REASONS).map(([value, label]) => el("option", { value }, label))
+  ]);
+  const description = el("textarea", { maxlength: 1000, placeholder: "Tell the seller what's wrong (for example: too big, arrived broken, not the item I ordered)." });
+  const photosInput = el("input", { type: "file", accept: "image/*", multiple: true });
+  const photoHelp = el("p", { class: "rt-help" }, "Up to 5 photos, each under 5 MB.");
+  const summary = el("div", { class: "rt-notice" }, "Choose the items you're returning to see what would be refunded.");
+  const agree = el("input", { type: "checkbox" });
+  const error = el("p", { class: "rt-error" });
+  const submit = el("button", { type: "button", class: "rt-btn" }, "Send return request");
+
+  const selectedItems = () =>
+    itemRows.filter((row) => row.check.checked).map((row) => ({ lineIndex: row.lineIndex, quantity: Number(row.qty.value) }));
+
+  let previewTimer = null;
+  let previewSeq = 0;
+
+  const refreshPreview = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      const items = selectedItems();
+      const seq = ++previewSeq;
+
+      if (items.length === 0) {
+        summary.textContent = "Choose at least one item to return.";
+        return;
+      }
+
+      summary.textContent = "Working out your refund...";
+
+      try {
+        const data = await returnsApi("previewReturn", { sellerOrderId, reason: reason.value || "other", items });
+
+        if (seq !== previewSeq) return;
+
+        const plan = data.plan;
+
+        summary.replaceChildren(
+          el("p", { style: "margin:0 0 6px" }, el("strong", {}, `You would be refunded ${formatCents(plan.buyerRefundCents)}`), ` of the ${formatCents(plan.grossCents)} you paid for these items${plan.shippingRefundCents ? " (including shipping)" : ""}.`),
+          plan.mode === "standard"
+            ? el("p", { style: "margin:0 0 6px" }, `Not refunded: Lesovia's service fee (${formatCents(plan.commissionKeptCents)}) and the payment processing fee (${formatCents(plan.stripeFeeWithheldCents)}).`)
+            : null,
+          el("p", { style: "margin:0" }, `You pay the return shipping. The seller reviews your request first. Once approved, you have ${data.returnShipDays} days to send it back, and your refund is sent when the seller confirms it arrived.`)
+        );
+      } catch (err) {
+        if (seq === previewSeq) summary.textContent = err.message;
+      }
+    }, 250);
+  };
+
+  for (const row of itemRows) {
+    row.check.addEventListener("change", refreshPreview);
+    row.qty.addEventListener("change", refreshPreview);
+  }
+  reason.addEventListener("change", () => {
+    photoHelp.textContent = RETURN_PHOTO_REASONS.includes(reason.value)
+      ? "A photo is required for this reason (up to 5 photos, each under 5 MB)."
+      : "Up to 5 photos, each under 5 MB.";
+    refreshPreview();
+  });
+
+  openModal((box, close) => {
+    box.append(
+      el("h3", {}, `Return items from order ${subOrder.orderNumber || ""}`),
+      el("div", { class: "rt-field" }, el("label", {}, "What are you returning?"),
+        ...itemRows.map((row) => el("div", { class: "rt-item" }, row.check,
+          el("span", {}, row.line.name + (row.line.color || row.line.size ? ` (${[row.line.color, row.line.size].filter(Boolean).join(", ")})` : "")),
+          row.line.quantity > 1 ? row.qty : null))),
+      el("div", { class: "rt-field" }, el("label", {}, "Reason *"), reason),
+      el("div", { class: "rt-field" }, el("label", {}, "Tell us more *"), description),
+      el("div", { class: "rt-field" }, el("label", {}, "Photos"), photosInput, photoHelp),
+      summary,
+      el("div", { class: "rt-field" }, el("label", { style: "font-weight:400;display:flex;gap:8px;align-items:flex-start;" }, agree,
+        el("span", {}, "I understand that Lesovia's service fee and the payment processing fee are not refunded, that I pay for return shipping, and that my refund is sent once the seller confirms the item arrived."))),
+      error,
+      el("div", { class: "rt-actions" },
+        el("button", { type: "button", class: "rt-btn rt-secondary", onclick: close }, "Close"),
+        submit
+      )
+    );
+
+    submit.addEventListener("click", async () => {
+      error.textContent = "";
+
+      const items = selectedItems();
+      const files = [...photosInput.files];
+
+      if (items.length === 0) return (error.textContent = "Choose at least one item to return.");
+      if (!reason.value) return (error.textContent = "Please choose a reason.");
+      if (description.value.trim().length < 10) return (error.textContent = "Please describe the problem (at least 10 characters).");
+      if (files.length > 5) return (error.textContent = "You can attach up to 5 photos.");
+      if (RETURN_PHOTO_REASONS.includes(reason.value) && files.length === 0) return (error.textContent = "Please attach at least one photo showing the problem.");
+      if (files.some((file) => !file.type.startsWith("image/"))) return (error.textContent = "Photos must be image files.");
+      if (files.some((file) => file.size >= 5 * 1024 * 1024)) return (error.textContent = "Each photo must be under 5 MB.");
+      if (!agree.checked) return (error.textContent = "Please confirm you understand what is and isn't refunded.");
+
+      submit.disabled = true;
+      submit.textContent = "Sending...";
+
+      try {
+        const uid = auth.currentUser.uid;
+        const photos = [];
+
+        for (let i = 0; i < files.length; i++) {
+          const safeName = files[i].name.replace(/[^A-Za-z0-9._-]/g, "_").slice(-60);
+          const path = `returnPhotos/${uid}/${subOrder.sellerId}/${returnId}/${i + 1}-${safeName}`;
+          const photoRef = ref(storage, path);
+
+          await uploadBytes(photoRef, files[i], { contentType: files[i].type });
+          photos.push({ path, url: await getDownloadURL(photoRef) });
+        }
+
+        await returnsApi("requestReturn", {
+          returnId,
+          sellerOrderId,
+          reason: reason.value,
+          description: description.value.trim(),
+          items,
+          photos,
+          acknowledgedFees: true
+        });
+
+        close();
+        alert("Return requested. The seller will review it, and you'll be notified of their decision.");
+        await refreshBuyerOrders();
+      } catch (err) {
+        error.textContent = err.message;
+        submit.disabled = false;
+        submit.textContent = "Send return request";
+      }
+    });
+  });
+
+  refreshPreview();
+};
+
+window.addReturnTracking = async (returnId) => {
+  const values = await openFormModal({
+    title: "Add your return tracking",
+    intro: "Enter the carrier and the tracking number from your shipping receipt.",
+    fields: [
+      { name: "carrier", label: "Carrier", required: true, placeholder: "USPS, UPS, FedEx...", maxLength: 60 },
+      { name: "trackingNumber", label: "Tracking number", required: true, maxLength: 80 }
+    ],
+    submitLabel: "Save tracking"
+  });
+
+  if (!values) return;
+
+  await runReturnAction(
+    () => returnsApi("submitReturnTracking", { returnId, ...values }),
+    refreshBuyerOrders,
+    "Thanks! The seller has been notified. Your refund is sent once they confirm the package arrived."
+  );
+};
+
+window.cancelReturnRequest = async (returnId) => {
+  if (!confirm("Withdraw this return request?")) return;
+
+  await runReturnAction(() => returnsApi("cancelReturn", { returnId }), refreshBuyerOrders);
+};
+
+window.escalateReturnRequest = async (returnId) => {
+  const values = await openFormModal({
+    title: "Ask Lesovia to review",
+    intro: "Tell us why you think this return should be approved. A Lesovia admin will make the final decision.",
+    fields: [{ name: "note", label: "Your message", type: "textarea", maxLength: 500 }],
+    submitLabel: "Ask for a review"
+  });
+
+  if (!values) return;
+
+  await runReturnAction(
+    () => returnsApi("escalateReturn", { returnId, note: values.note }),
+    refreshBuyerOrders,
+    "Thanks. Lesovia will review your return and notify you."
+  );
+};
+
+window.cancelUnshipped = async (sellerOrderId) => {
+  const subOrder = subOrderCache.get(sellerOrderId);
+  const amount = subOrder ? formatCents(subOrder.buyerTotalCents) : "the full amount";
+
+  if (!confirm(`Cancel this order? The seller hasn't shipped it, and you'll be refunded ${amount} in full. Banks usually show it within 5 to 10 business days.`)) return;
+
+  await runReturnAction(
+    () => returnsApi("cancelUnshippedOrder", { sellerOrderId }),
+    refreshBuyerOrders,
+    "Your order was cancelled and refunded."
+  );
+};
+
+// ---------------- seller ----------------
+window.approveReturn = async (returnId) => {
+  if (!confirm("Approve this return? The buyer will send the items back, and their refund is sent once you confirm they arrived.")) return;
+
+  await runReturnAction(() => returnsApi("decideReturn", { returnId, decision: "approve" }), refreshSellerOrders, "Return approved. The buyer has been notified.");
+};
+
+window.declineReturn = async (returnId) => {
+  const values = await openFormModal({
+    title: "Decline this return",
+    intro: "The buyer will see your reason and can ask Lesovia to review your decision.",
+    fields: [{ name: "note", label: "Reason", type: "textarea", required: true, maxLength: 500 }],
+    submitLabel: "Decline return"
+  });
+
+  if (!values) return;
+
+  await runReturnAction(() => returnsApi("decideReturn", { returnId, decision: "decline", note: values.note }), refreshSellerOrders, "Return declined.");
+};
+
+window.confirmReturnReceivedUi = async (returnId) => {
+  const ret = [...sellerReturns.values()].find((r) => r.id === returnId);
+  const amount = ret && ret.plan ? formatCents(ret.plan.buyerRefundCents) : "the refund";
+
+  if (!confirm(`Confirm the package arrived? ${amount} will be refunded to the buyer right away. This can't be undone.`)) return;
+
+  await runReturnAction(
+    () => returnsApi("confirmReturnReceived", { returnId }),
+    refreshSellerOrders,
+    (result) => result.status === "refunded"
+      ? "Done. The buyer has been refunded."
+      : "The refund couldn't be sent right now. Lesovia has been notified and will follow up."
+  );
+};
+
+window.reportReturnProblemUi = async (returnId) => {
+  const values = await openFormModal({
+    title: "Report a problem with the returned package",
+    intro: "Lesovia will review this and decide. Describe what you found (for example, the box was empty or the item is damaged).",
+    fields: [{ name: "note", label: "What's wrong?", type: "textarea", required: true, maxLength: 500 }],
+    submitLabel: "Report problem"
+  });
+
+  if (!values) return;
+
+  await runReturnAction(
+    () => returnsApi("reportReturnProblem", { returnId, note: values.note }),
+    refreshSellerOrders,
+    "Thanks. Lesovia will review it and be in touch."
+  );
+};
+
+// Shipping a sub-order also asks where a return should be sent, so the buyer
+// has it if they ever need it. The last address used is remembered in this
+// browser only (never in the database, where other users could read it).
+const RETURN_ADDRESS_KEY = () => `lesovia.returnAddress.${auth.currentUser.uid}`;
+
+function savedReturnAddress() {
+  try {
+    return JSON.parse(localStorage.getItem(RETURN_ADDRESS_KEY()) || "null") || {};
+  } catch (err) {
+    return {};
+  }
+}
+
+async function shipSubOrder(orderId) {
+  const { ref: orderRef } = orderTarget(orderId, "sub");
+  const orderSnap = await getDoc(orderRef);
+
+  if (!orderSnap.exists()) {
+    alert("Order not found.");
+    return;
+  }
+
+  const order = orderSnap.data();
+  const saved = savedReturnAddress();
+
+  const values = await openFormModal({
+    title: "Ship this order",
+    intro: "Add the tracking number if you have it. Also tell us where a buyer should send a return; only this buyer will see it. A business or PO box address works.",
+    fields: [
+      { name: "trackingNumber", label: "Tracking number (optional)", maxLength: 80 },
+      { name: "fullName", label: "Return address: name or business", required: true, value: saved.fullName, maxLength: 100 },
+      { name: "line1", label: "Address line 1", required: true, value: saved.line1 },
+      { name: "line2", label: "Address line 2", value: saved.line2 },
+      { name: "city", label: "City", required: true, value: saved.city, maxLength: 100 },
+      { name: "state", label: "State", required: true, value: saved.state, maxLength: 100 },
+      { name: "zip", label: "ZIP code", required: true, value: saved.zip, maxLength: 20 },
+      { name: "country", label: "Country", required: true, value: saved.country || "United States", maxLength: 100 }
+    ],
+    submitLabel: "Mark as shipped"
+  });
+
+  if (!values) return;
+
+  const { trackingNumber, ...returnAddress } = values;
+
+  try {
+    localStorage.setItem(RETURN_ADDRESS_KEY(), JSON.stringify(returnAddress));
+  } catch (err) { /* private browsing: just don't remember it */ }
+
+  try {
+    await updateDoc(orderRef, {
+      fulfillmentStatus: "shipped",
+      shippedAt: new Date(),
+      trackingNumber: trackingNumber || null,
+      returnAddress
+    });
+
+    await notifyBuyerOfOrder(order, true, orderId, {
+      type: "shipped",
+      title: "Order Shipped",
+      message: `Your order for "${describeProducts(order.products)}" has been shipped.`
+    });
+
+    alert("Order marked as shipped");
+    loadSellerOrders();
+  } catch (err) {
+    alert("Failed to update order: " + err.message);
+  }
+}
+
+// ================= SHIP ORDER =================
+window.markShipped = async (orderId, kind) => {
+  try {
+    const { isSub, ref, statusField } = orderTarget(orderId, kind);
+
+    // A newer sub-order also asks where a return should be sent.
+    if (isSub) return shipSubOrder(orderId);
+
+    const orderSnap = await getDoc(ref);
 
     if (!orderSnap.exists()) {
-        alert("Order not found.");
-        return;
+      alert("Order not found.");
+      return;
     }
 
     const order = orderSnap.data();
-
-    const productSnap = await getDoc(
-    doc(db, "products", order.productId)
-    );
-
-    const productName = productSnap.exists()
-        ? productSnap.data().name
-        : "Unknown Product";
-    //ends above//
+    const productName = await productNameForNotification(order, isSub);
 
     const trackingNumber = prompt(
       "Tracking number (optional -- leave blank to skip, you can add it later):",
@@ -2925,7 +4473,7 @@ window.markShipped = async (orderId) => {
     );
 
     const orderUpdate = {
-      status: "shipped",
+      [statusField]: "shipped",
       shippedAt: new Date() // save timestamp
     };
 
@@ -2935,26 +4483,13 @@ window.markShipped = async (orderId) => {
       orderUpdate.trackingNumber = trackingNumber.trim() || null;
     }
 
-    await updateDoc(doc(db, "orders", orderId), orderUpdate);
-    //new one too july 22//
+    await updateDoc(ref, orderUpdate);
 
-    await addDoc(collection(db, "notifications"), {
-
-    userId: order.userId,
-
-    type: "shipped",
-
-    title: "Order Shipped",
-
-    message: `Your order for "${productName}" has been shipped.`,
-
-    link: `order.html?orderId=${orderId}`,
-
-    read: false,
-
-    createdAt: serverTimestamp()
-
-});
+    await notifyBuyerOfOrder(order, isSub, orderId, {
+      type: "shipped",
+      title: "Order Shipped",
+      message: `Your order for "${productName}" has been shipped.`
+    });
 
     alert("Order marked as shipped");
     loadSellerOrders();
@@ -2967,9 +4502,11 @@ window.markShipped = async (orderId) => {
 // Lets a seller add/correct a tracking number any time after shipping --
 // Firestore rules only allow this while the order's status is "shipped" or
 // "delivered", same as the check already built into loadSellerOrders above.
-window.editTrackingNumber = async (orderId) => {
+window.editTrackingNumber = async (orderId, kind) => {
   try {
-    const orderSnap = await getDoc(doc(db, "orders", orderId));
+    const { ref } = orderTarget(orderId, kind);
+
+    const orderSnap = await getDoc(ref);
 
     if (!orderSnap.exists()) {
       alert("Order not found.");
@@ -2982,7 +4519,7 @@ window.editTrackingNumber = async (orderId) => {
 
     if (trackingNumber === null) return; // cancelled
 
-    await updateDoc(doc(db, "orders", orderId), {
+    await updateDoc(ref, {
       trackingNumber: trackingNumber.trim() || null
     });
 
@@ -2994,53 +4531,30 @@ window.editTrackingNumber = async (orderId) => {
 };
 
 // ================= DELIVER ORDER =================
-window.markDelivered = async (orderId) => {
+window.markDelivered = async (orderId, kind) => {
   try {
-    //NEW JUY 22//
-    const orderSnap = await getDoc(
-    doc(db, "orders", orderId)
-    );
+    const { isSub, ref, statusField } = orderTarget(orderId, kind);
+
+    const orderSnap = await getDoc(ref);
 
     if (!orderSnap.exists()) {
-        alert("Order not found.");
-        return;
+      alert("Order not found.");
+      return;
     }
 
     const order = orderSnap.data();
+    const productName = await productNameForNotification(order, isSub);
 
-    const productSnap = await getDoc(
-        doc(db, "products", order.productId)
-    );
-
-    const productName = productSnap.exists()
-        ? productSnap.data().name
-        : "Unknown Product";
-    //ENDS ABOVE//
-
-    await updateDoc(doc(db, "orders", orderId), {
-      status: "delivered",
+    await updateDoc(ref, {
+      [statusField]: "delivered",
       deliveredAt: new Date() // save timestamp
     });
-    //NEW ONE TOO JULY 22//
 
-  await addDoc(collection(db, "notifications"), {
-
-    userId: order.userId,
-
-    type: "delivered",
-
-    title: "Order Delivered",
-
-    message: `Your order for "${productName}" has been delivered. Please leave a review.`,
-
-    link: `order.html?orderId=${orderId}`,
-
-    read: false,
-
-    createdAt: serverTimestamp()
-
-});
-//ENDS ABOVE//
+    await notifyBuyerOfOrder(order, isSub, orderId, {
+      type: "delivered",
+      title: "Order Delivered",
+      message: `Your order for "${productName}" has been delivered. Please leave a review.`
+    });
 
     alert("Order marked as delivered");
     loadSellerOrders();
@@ -3060,15 +4574,14 @@ async function loadSoldProducts() {
   const soldList = document.getElementById("soldProducts");
   if (!soldList || !auth.currentUser) return;
 
-  const q = query(
-    collection(db, "orders"),
-    where("sellerId", "==", auth.currentUser.uid)
-  );
+  const [legacySnapshot, subOrderSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "orders"), where("sellerId", "==", auth.currentUser.uid))),
+    getDocs(query(collection(db, "sellerOrders"), where("sellerId", "==", auth.currentUser.uid)))
+  ]);
 
-  const snapshot = await getDocs(q);
   soldList.innerHTML = "";
 
-  if (snapshot.empty) {
+  if (legacySnapshot.empty && subOrderSnapshot.empty) {
     soldList.innerHTML = `
       <div class="empty-state">
         <div class="empty-glyph">🧾</div>
@@ -3079,11 +4592,23 @@ async function loadSoldProducts() {
     return;
   }
 
-  const orders = snapshot.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  const orders = [
+    ...legacySnapshot.docs.map(d => ({ id: d.id, ...d.data() })),
+    ...subOrderSnapshot.docs.map(d => ({ id: d.id, isSubOrder: true, ...d.data() }))
+  ].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
   for (const order of orders) {
+
+    if (order.isSubOrder) {
+      const subBuyerSnap = await getDoc(doc(db, "users", order.buyerId));
+
+      soldList.insertAdjacentHTML(
+        "beforeend",
+        soldSubOrderHtml(order, subBuyerSnap.exists() ? subBuyerSnap.data() : {})
+      );
+
+      continue;
+    }
 
     const productSnap = await getDoc(doc(db, "products", order.productId));
     const product = productSnap.exists() ? productSnap.data() : {};
@@ -4012,6 +5537,142 @@ async function loadStoreProfile() {
     descriptionElement.innerText =
       data.storeDescription || "";
   }
+
+  renderStripeStatus(data);
+  fillShippingForm(data.shipping);
+
+}
+
+// Shows the seller's current Stripe Connect onboarding status and
+// whether the "Connect with Stripe" button should read "Connect" or
+// "Continue setup". Status text is driven entirely by
+// stripeOnboardingStatus, which only ever changes via the
+// account.updated webhook -- never something this page computes itself.
+function renderStripeStatus(data) {
+  const statusText = document.getElementById("stripeStatusText");
+  const connectBtn = document.getElementById("connectStripeBtn");
+
+  if (!statusText || !connectBtn) return;
+
+  const status = data.stripeOnboardingStatus || "not_started";
+
+  const statusMessages = {
+    not_started: "You haven't connected a payout account yet.",
+    pending: "Your payout account setup is in progress with Stripe.",
+    restricted: "Stripe needs more information before you can receive payouts.",
+    complete: "You're all set! Payouts are enabled on your account.",
+  };
+
+  statusText.textContent = statusMessages[status] || statusMessages.not_started;
+
+  connectBtn.style.display = status === "complete" ? "none" : "inline-block";
+  connectBtn.textContent = status === "not_started" ? "Connect with Stripe" : "Continue setup";
+}
+
+const connectStripeBtn = document.getElementById("connectStripeBtn");
+
+if (connectStripeBtn) {
+
+  connectStripeBtn.addEventListener("click", async () => {
+
+    if (!auth.currentUser) {
+      alert("Please login first");
+      return;
+    }
+
+    connectStripeBtn.disabled = true;
+
+    try {
+
+      const idToken = await auth.currentUser.getIdToken();
+
+      const response = await fetch(createConnectOnboardingLinkURL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "Unable to start Stripe onboarding.");
+        connectStripeBtn.disabled = false;
+        return;
+      }
+
+      window.location.href = data.url;
+
+    } catch (err) {
+      alert("Unable to start Stripe onboarding: " + err.message);
+      connectStripeBtn.disabled = false;
+    }
+
+  });
+
+}
+
+// Populates the shipping form from the seller's saved shipping config, if
+// any -- new sellers see empty/unchecked defaults rather than a shipping
+// policy they never set.
+function fillShippingForm(shipping) {
+  const s = shipping || {};
+
+  const freeShippingCheckbox = document.getElementById("freeShippingCheckbox");
+  const flatRateInput = document.getElementById("flatRateInput");
+  const expressEnabledCheckbox = document.getElementById("expressEnabledCheckbox");
+  const expressRateInput = document.getElementById("expressRateInput");
+
+  if (freeShippingCheckbox) freeShippingCheckbox.checked = Boolean(s.freeShipping);
+  if (flatRateInput) flatRateInput.value = s.flatRateCents != null ? (s.flatRateCents / 100).toFixed(2) : "";
+  if (expressEnabledCheckbox) expressEnabledCheckbox.checked = Boolean(s.expressEnabled);
+  if (expressRateInput) expressRateInput.value = s.expressRateCents != null ? (s.expressRateCents / 100).toFixed(2) : "";
+}
+
+const saveShippingBtn = document.getElementById("saveShippingBtn");
+
+if (saveShippingBtn) {
+
+  saveShippingBtn.addEventListener("click", async () => {
+
+    const freeShipping = document.getElementById("freeShippingCheckbox").checked;
+    const expressEnabled = document.getElementById("expressEnabledCheckbox").checked;
+
+    const flatRateDollars = parseFloat(document.getElementById("flatRateInput").value);
+    const expressRateDollars = parseFloat(document.getElementById("expressRateInput").value);
+
+    if (!freeShipping && !(flatRateDollars >= 0)) {
+      alert("Please enter a flat-rate shipping price, or offer free shipping.");
+      return;
+    }
+
+    if (expressEnabled && !(expressRateDollars >= 0)) {
+      alert("Please enter an express shipping price, or turn off express shipping.");
+      return;
+    }
+
+    const shipping = {
+      freeShipping,
+      flatRateCents: flatRateDollars >= 0 ? Math.round(flatRateDollars * 100) : 0,
+      expressEnabled,
+      expressRateCents: expressEnabled && expressRateDollars >= 0 ? Math.round(expressRateDollars * 100) : null,
+    };
+
+    try {
+
+      await updateDoc(
+        doc(db, "users", auth.currentUser.uid),
+        { shipping }
+      );
+
+      alert("Shipping settings saved!");
+
+    } catch (err) {
+      alert(err.message);
+    }
+
+  });
 
 }
 

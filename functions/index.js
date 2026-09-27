@@ -43,6 +43,27 @@ const Stripe = require("stripe");
 const OpenAI = require("openai").default;
 const admin = require("firebase-admin");
 const { Resend } = require("resend");
+const {
+  CheckoutError,
+  resolveChargeType,
+  resolveShipping,
+  computeSellerBreakdown,
+} = require("./paymentMath");
+const {
+  aggregateQuantities,
+  findInsufficientStock,
+  describePurchase,
+  buildSellerOrder,
+  buildCheckoutOrder,
+} = require("./orderDocs");
+const {
+  computeOnboardingStatus,
+  planRefundUpdate,
+  disputePatch,
+  describeDispute,
+  transferReversalPatch,
+  TRANSFER_SETTLED,
+} = require("./webhookPatches");
 
 admin.initializeApp();
 
@@ -55,6 +76,85 @@ class InsufficientStockError extends Error {
     super(`Insufficient stock for product ${productId} at fulfillment time.`);
     this.productId = productId;
   }
+}
+
+// =================================
+// TAX LIABILITY CONFIGURATION (Stage 7 lands the real Stripe Tax call)
+// =================================
+// Whether Lesovia or the seller is the legally liable party for sales tax
+// has NOT been decided -- that's a question for a licensed U.S. sales-tax
+// professional, not an assumption this code gets to make. Until an
+// operator explicitly sets config/platformSettings.taxLiability (never a
+// client -- see firestore.rules), every checkout collects exactly $0 tax.
+// Thrown when checkout is attempted in live mode before that
+// configuration has been made -- a real customer must never be charged
+// $0 tax just because the legal question hasn't been resolved yet.
+class TaxLiabilityUnresolvedError extends Error {
+  constructor() {
+    super("Tax liability is not yet configured; checkout is blocked in live mode until it is.");
+  }
+}
+
+const VALID_TAX_LIABILITIES = ["platform", "connectedAccount"];
+
+// True only when STRIPE_SECRET_KEY is a live key. This is the one signal
+// that actually determines whether real money can move -- never trust a
+// client-supplied or environment-flag notion of "production" for a
+// decision this consequential.
+function isLiveMode() {
+  return Boolean(process.env.STRIPE_SECRET_KEY) && process.env.STRIPE_SECRET_KEY.startsWith("sk_live_");
+}
+
+// Reads the platform's tax-liability configuration via the Admin SDK (see
+// the Admin-only config/{configId} rule). A missing document, a missing
+// field, or any value other than the two valid ones is always treated as
+// "not_yet_determined" -- the safe default is to block/zero, never to
+// assume a liable party.
+async function getTaxLiability() {
+  const snap = await db.collection("config").doc("platformSettings").get();
+  const value = snap.exists ? snap.data().taxLiability : null;
+  return VALID_TAX_LIABILITIES.includes(value) ? value : "not_yet_determined";
+}
+
+// The one safety gate: in live mode, an unresolved tax liability fails
+// checkout closed instead of silently charging a real customer $0 tax. In
+// test mode, $0 tax is allowed so the payment architecture can be built
+// and verified before the legal question is settled. Both isLiveMode()
+// and getTaxLiability() are server-derived only, so no client-supplied
+// value can influence this check.
+function assertTaxLiabilityAllowsCheckout(taxLiability) {
+  if (isLiveMode() && taxLiability === "not_yet_determined") {
+    throw new TaxLiabilityUnresolvedError();
+  }
+}
+
+// Stage 7 will replace this body with a real stripe.tax.calculations.create
+// call, using a Stripe-Account context chosen by `taxLiability`. Kept as
+// its own function now, and always returning zero, so tax is tracked as
+// an isolated line item (never folded into product subtotal, commission,
+// or shipping) from the very first checkout this system processes.
+async function calculateTax({ taxLiability }) {
+  if (taxLiability !== "platform" && taxLiability !== "connectedAccount") {
+    return { taxCents: 0, taxCalculationId: null };
+  }
+
+  // Not implemented until Stage 7 -- taxLiability can't legally be set to
+  // "platform"/"connectedAccount" yet, so this branch is unreachable today.
+  return { taxCents: 0, taxCalculationId: null };
+}
+
+// What the buyer is allowed to see of the per-seller breakdown: what they're
+// paying for, never Lesovia's commission or the seller's proceeds.
+function toBuyerBreakdown(sellers) {
+  return (sellers || []).map((seller) => ({
+    sellerId: seller.sellerId,
+    storeName: seller.storeName,
+    productSubtotalCents: seller.productSubtotalCents,
+    shippingCents: seller.shippingCents,
+    shippingMethod: seller.shippingMethod,
+    taxCents: seller.taxCents,
+    buyerTotalCents: seller.buyerTotalCents,
+  }));
 }
 
 // Trims and length-caps a delivery address the client sent along with
@@ -147,8 +247,16 @@ async function isUnderEmailCooldown(purpose, email, cooldownSeconds) {
 // =================================
 // CREATE PAYMENT INTENT (CART / BUY NOW)
 // =================================
-// Computes the order total from Firestore product data -- never from the
-// client -- validates stock, and creates a matching Stripe TEST PaymentIntent.
+// Computes everything the buyer will be charged from Firestore data -- never
+// from the client -- and creates the matching Stripe PaymentIntent:
+//   * ONE seller in the cart   -> Direct Charge on that seller's
+//     connected account, with Lesovia's 7% as the application fee.
+//   * TWO+ sellers in the cart -> a single charge on Lesovia's own platform
+//     account (Separate Charges and Transfers); verifyPayment later sends each
+//     seller their share, after Lesovia's 10% commission.
+// The charge type is derived here from the sellers on the products themselves.
+// Nothing about it, the commission, the shipping price, or the tax is ever
+// read from the request body.
 exports.createPaymentIntent = onRequest(
   {
     secrets: ["STRIPE_SECRET_KEY"],
@@ -165,7 +273,7 @@ exports.createPaymentIntent = onRequest(
         return res.status(401).send({ error: "Authentication required." });
       }
 
-      const { checkoutId, items, cartItemIds } = req.body || {};
+      const { checkoutId, items, cartItemIds, shippingSelections } = req.body || {};
 
       if (!checkoutId || typeof checkoutId !== "string") {
         return res.status(400).send({ error: "Missing checkoutId." });
@@ -179,59 +287,78 @@ exports.createPaymentIntent = onRequest(
       const pendingOrderRef = db.collection("pendingOrders").doc(checkoutId);
 
       // Retry of an in-flight checkout with the same checkoutId -- return the
-      // existing PaymentIntent instead of creating a second one.
+      // existing PaymentIntent instead of creating a second one. A Direct
+      // Charge PaymentIntent lives on the seller's account, so it has to be
+      // looked up there.
       const existingSnap = await pendingOrderRef.get();
 
       if (existingSnap.exists && existingSnap.data().status === "pending_payment") {
         const existing = existingSnap.data();
+
         const existingIntent = await stripe.paymentIntents.retrieve(
-          existing.stripePaymentIntentId
+          existing.stripePaymentIntentId,
+          {},
+          existing.stripeAccountId ? { stripeAccount: existing.stripeAccountId } : undefined
         );
 
         return res.send({
           orderId: checkoutId,
           clientSecret: existingIntent.client_secret,
           amount: existing.amount,
+          stripeAccountId: existing.stripeAccountId || null,
+          sellers: toBuyerBreakdown(existing.sellers),
         });
       }
 
+      // In live mode, an unresolved tax-liability setting must stop checkout
+      // here rather than charge a real customer $0 tax.
+      const taxLiability = await getTaxLiability();
+      assertTaxLiabilityAllowsCheckout(taxLiability);
+
+      const shippingChoiceBySeller = new Map();
+
+      if (Array.isArray(shippingSelections)) {
+        for (const selection of shippingSelections) {
+          if (selection && typeof selection.sellerId === "string" && typeof selection.method === "string") {
+            shippingChoiceBySeller.set(selection.sellerId, selection.method);
+          }
+        }
+      }
+
       const lineItems = [];
-      let amount = 0;
 
       for (const rawItem of items) {
         const productId = rawItem && rawItem.productId;
         const quantity = Number(rawItem && rawItem.quantity);
 
         if (!productId || !Number.isInteger(quantity) || quantity < 1) {
-          return res.status(400).send({ error: "Invalid item in cart." });
+          throw new CheckoutError("Invalid item in cart.");
         }
 
         const productSnap = await db.collection("products").doc(productId).get();
 
         if (!productSnap.exists) {
-          return res
-            .status(400)
-            .send({ error: `Product ${productId} no longer exists.` });
+          throw new CheckoutError(`Product ${productId} no longer exists.`);
         }
 
         const product = productSnap.data();
         const availableQuantity = product.quantity ?? 0;
 
         if (availableQuantity < quantity) {
-          return res.status(400).send({
-            error: `Not enough stock for "${product.name}". Only ${availableQuantity} left.`,
-          });
+          throw new CheckoutError(
+            `Not enough stock for "${product.name}". Only ${availableQuantity} left.`
+          );
         }
 
         const unitPriceCents = Math.round(Number(product.price) * 100);
 
         if (!Number.isFinite(unitPriceCents) || unitPriceCents <= 0) {
-          return res
-            .status(400)
-            .send({ error: `Invalid price for "${product.name}".` });
+          throw new CheckoutError(`Invalid price for "${product.name}".`);
         }
 
-        amount += unitPriceCents * quantity;
+        if (!product.sellerId || typeof product.sellerId !== "string") {
+          throw new CheckoutError(`"${product.name}" has no seller.`);
+        }
 
         lineItems.push({
           productId,
@@ -244,29 +371,102 @@ exports.createPaymentIntent = onRequest(
         });
       }
 
-      if (amount <= 0) {
-        return res.status(400).send({ error: "Order total must be greater than zero." });
+      const sellerIds = [...new Set(lineItems.map((item) => item.sellerId))];
+      const { chargeType, commissionRate } = resolveChargeType(sellerIds.length);
+
+      const sellers = [];
+
+      for (const sellerId of sellerIds) {
+        const sellerSnap = await db.collection("users").doc(sellerId).get();
+        const seller = sellerSnap.exists ? sellerSnap.data() : null;
+
+        if (!seller || seller.role !== "seller") {
+          throw new CheckoutError("A seller in your cart is no longer available.");
+        }
+
+        const storeName = seller.storeName || "A seller";
+
+        // The seller must be able to actually receive money before a buyer
+        // is allowed to pay for their products.
+        if (!seller.stripeAccountId || seller.stripeChargesEnabled !== true) {
+          throw new CheckoutError(`${storeName} isn't set up to receive payments yet.`);
+        }
+
+        const productSubtotalCents = lineItems
+          .filter((item) => item.sellerId === sellerId)
+          .reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
+
+        const shipping = resolveShipping(seller.shipping, shippingChoiceBySeller.get(sellerId));
+        const tax = await calculateTax({ taxLiability });
+
+        sellers.push({
+          sellerId,
+          stripeAccountId: seller.stripeAccountId,
+          storeName,
+          ...shipping,
+          taxCalculationId: tax.taxCalculationId,
+          ...computeSellerBreakdown({
+            productSubtotalCents,
+            shippingCents: shipping.shippingCents,
+            taxCents: tax.taxCents,
+            commissionRate,
+          }),
+        });
       }
 
-      const paymentIntent = await stripe.paymentIntents.create(
-        {
-          amount,
-          currency: "usd",
-          metadata: {
-            orderId: checkoutId,
-            buyerId,
+      const amount = sellers.reduce((sum, seller) => sum + seller.buyerTotalCents, 0);
+
+      if (amount <= 0) {
+        throw new CheckoutError("Order total must be greater than zero.");
+      }
+
+      const metadata = { orderId: checkoutId, buyerId, chargeType };
+
+      let paymentIntent;
+      let stripeAccountId = null;
+
+      if (chargeType === "direct") {
+        const [seller] = sellers;
+        stripeAccountId = seller.stripeAccountId;
+
+        paymentIntent = await stripe.paymentIntents.create(
+          {
+            amount,
+            currency: "usd",
+            metadata,
+            ...(seller.commissionAmountCents > 0
+              ? { application_fee_amount: seller.commissionAmountCents }
+              : {}),
           },
-        },
-        {
-          idempotencyKey: `pi_create_${checkoutId}`,
-        }
-      );
+          {
+            stripeAccount: stripeAccountId,
+            idempotencyKey: `pi_create_${checkoutId}`,
+          }
+        );
+      } else {
+        paymentIntent = await stripe.paymentIntents.create(
+          {
+            amount,
+            currency: "usd",
+            metadata,
+            transfer_group: checkoutId,
+          },
+          {
+            idempotencyKey: `pi_create_${checkoutId}`,
+          }
+        );
+      }
 
       await pendingOrderRef.set({
         buyerId,
         items: lineItems,
+        sellers,
         amount,
         currency: "usd",
+        chargeType,
+        commissionRate,
+        stripeAccountId,
+        taxLiabilityAtPurchase: taxLiability,
         cartItemIds: Array.isArray(cartItemIds) ? cartItemIds : [],
         stripePaymentIntentId: paymentIntent.id,
         status: "pending_payment",
@@ -277,7 +477,455 @@ exports.createPaymentIntent = onRequest(
         orderId: checkoutId,
         clientSecret: paymentIntent.client_secret,
         amount,
+        stripeAccountId,
+        sellers: toBuyerBreakdown(sellers),
       });
+
+    } catch (error) {
+
+      if (error instanceof CheckoutError) {
+        return res.status(error.status).send({ error: error.message });
+      }
+
+      // The real reason is for the logs only -- a buyer just needs to know
+      // checkout isn't available right now.
+      if (error instanceof TaxLiabilityUnresolvedError) {
+        logger.error(error.message);
+        return res.status(503).send({ error: "Checkout is temporarily unavailable. Please try again later." });
+      }
+
+      logger.error(error);
+
+      res.status(500).send({ error: error.message });
+
+    }
+
+  }
+);
+
+// =================================
+// PAY EACH SELLER (multi-seller checkouts)
+// =================================
+// A multi-seller checkout is one charge on Lesovia's own account, so each
+// seller's share (product subtotal - Lesovia's 10% + their shipping, never tax)
+// has to be sent on to them as a Transfer. Direct Charges never come through
+// here -- Stripe already split those when the buyer paid.
+//
+// Safe to run more than once for the same order: a seller who's already been
+// paid is skipped, and a failed transfer is retried on the next call. It never
+// throws -- by now the buyer has paid and the order exists, so a seller who
+// can't be paid yet (e.g. their account was restricted in the meantime) is
+// recorded as "failed" for follow-up rather than failing the buyer's request.
+async function settleSellerTransfers(stripe, orderId, pendingOrder) {
+  if (pendingOrder.chargeType !== "separate") return;
+
+  for (const sellerOrderId of pendingOrder.sellerOrderIds || []) {
+    const ref = db.collection("sellerOrders").doc(sellerOrderId);
+    const snap = await ref.get();
+    const sellerOrder = snap.exists ? snap.data() : null;
+
+    if (!sellerOrder || TRANSFER_SETTLED.includes(sellerOrder.transferStatus)) continue;
+
+    const attempt = (sellerOrder.transferAttempts || 0) + 1;
+
+    try {
+      // An earlier attempt may have reached Stripe and then died before it was
+      // recorded here -- adopt that transfer rather than paying the seller twice.
+      const sent = await stripe.transfers.list({
+        transfer_group: orderId,
+        destination: sellerOrder.stripeAccountId,
+        limit: 20,
+      });
+
+      let transfer = sent.data.find(
+        (t) => t.metadata && t.metadata.sellerOrderId === sellerOrderId
+      );
+
+      if (!transfer) {
+        transfer = await stripe.transfers.create(
+          {
+            amount: sellerOrder.sellerProceedsCents,
+            currency: "usd",
+            destination: sellerOrder.stripeAccountId,
+            transfer_group: orderId,
+            // Ties the transfer to this specific charge so the money can move
+            // before the charge itself has settled into the available balance.
+            source_transaction: sellerOrder.stripeChargeId,
+            metadata: { checkoutId: orderId, sellerId: sellerOrder.sellerId, sellerOrderId },
+          },
+          { idempotencyKey: `transfer_${sellerOrderId}_${attempt}` }
+        );
+      }
+
+      await ref.update({
+        stripeTransferId: transfer.id,
+        transferStatus: "transferred",
+        transferAttempts: attempt,
+        transferError: null,
+        transferredAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    } catch (error) {
+      logger.error(`Transfer for ${sellerOrderId} failed:`, error);
+
+      await ref
+        .update({
+          transferStatus: "failed",
+          transferAttempts: attempt,
+          transferError: String(error.message).slice(0, 300),
+        })
+        .catch((updateError) => logger.error("Could not record transfer failure:", updateError));
+    }
+  }
+}
+
+// =================================
+// FINALIZE A PAID CHECKOUT (shared by verifyPayment and the Stripe webhooks)
+// =================================
+// The ONLY place an order is ever marked "paid". Re-checks the payment with
+// Stripe directly (never trusts the client's local confirmCardPayment result,
+// and never trusts a webhook payload either -- the PaymentIntent is always
+// re-fetched), then atomically creates the parent order and one sub-order per
+// seller, decrements inventory, and notifies buyer + sellers. For a
+// multi-seller checkout it then sends each seller their Transfer.
+//
+// Called from two places that race each other on purpose: the buyer's browser
+// (verifyPayment, moments after paying) and Stripe itself (the
+// payment_intent.succeeded webhook), so an order is created even if the buyer
+// closes the tab first. Idempotent -- whichever arrives second sees the
+// checkout already completed and only makes sure every seller was paid.
+//
+// Returns the JSON body verifyPayment sends back to the buyer.
+async function finalizePendingOrder(stripe, orderId, pendingOrder, deliveryAddress) {
+  const pendingOrderRef = db.collection("pendingOrders").doc(orderId);
+
+  // The buyer's own request carries the address; a webhook has only the one
+  // saved before they paid (see saveCheckoutAddress).
+  const address = deliveryAddress || pendingOrder.deliveryAddress || null;
+
+  // Already finalized -- don't reprocess it, but do make sure every seller
+  // of a multi-seller order has actually been paid.
+  if (pendingOrder.status === "completed") {
+    // If a webhook created the order before the buyer's request (with its
+    // address) arrived, the address is filled in now.
+    if (deliveryAddress) {
+      await backfillDeliveryAddress(orderId, pendingOrder, deliveryAddress);
+    }
+
+    await settleSellerTransfers(stripe, orderId, pendingOrder);
+
+    return {
+      success: true,
+      orderIds: pendingOrder.orderIds || [],
+      sellerOrderIds: pendingOrder.sellerOrderIds || [],
+    };
+  }
+
+  if (pendingOrder.status === "failed") {
+    return { success: false, status: pendingOrder.failureReason || "failed" };
+  }
+
+  // A checkout that was started before the Connect checkout existed has no
+  // seller breakdown to fulfill from. Never leave its buyer charged for
+  // an order that can't be created.
+  if (!pendingOrder.chargeType || !Array.isArray(pendingOrder.sellers)) {
+    const legacyIntent = await stripe.paymentIntents.retrieve(pendingOrder.stripePaymentIntentId);
+
+    if (legacyIntent.status === "succeeded") {
+      await stripe.refunds.create(
+        { payment_intent: legacyIntent.id },
+        { idempotencyKey: `refund_${orderId}` }
+      );
+    }
+
+    await pendingOrderRef.update({
+      status: "failed",
+      failureReason: "checkout_restarted_after_update",
+    });
+
+    return { success: false, status: "checkout_restarted_after_update" };
+  }
+
+  // A Direct Charge lives on the seller's connected account, so that's
+  // where it has to be looked up (and refunded, if it comes to that).
+  const stripeOptions = pendingOrder.stripeAccountId
+    ? { stripeAccount: pendingOrder.stripeAccountId }
+    : undefined;
+
+  const paymentIntent = await stripe.paymentIntents.retrieve(
+    pendingOrder.stripePaymentIntentId,
+    {},
+    stripeOptions
+  );
+
+  if (
+    paymentIntent.status !== "succeeded" ||
+    paymentIntent.amount !== pendingOrder.amount
+  ) {
+    await pendingOrderRef.update({
+      status: "failed",
+      failureReason: paymentIntent.status,
+    });
+
+    return { success: false, status: paymentIntent.status };
+  }
+
+  let result;
+
+  try {
+
+    result = await db.runTransaction(async (tx) => {
+
+      // Re-read inside the transaction in case a concurrent call for the same
+      // order (the browser and the webhook) is racing this one.
+      const freshSnap = await tx.get(pendingOrderRef);
+      const freshPending = freshSnap.data();
+
+      if (freshPending.status === "completed") {
+        return {
+          orderIds: freshPending.orderIds || [],
+          sellerOrderIds: freshPending.sellerOrderIds || [],
+        };
+      }
+
+      const needed = aggregateQuantities(freshPending.items);
+      const productIds = [...needed.keys()];
+      const productRefs = productIds.map((id) => db.collection("products").doc(id));
+
+      // Firestore transactions require every read before any write, so the
+      // order-number counter is read here alongside the product stock,
+      // even though it's only written at the end.
+      const counterRef = db.collection("counters").doc("orders");
+
+      const [productSnaps, counterSnap] = await Promise.all([
+        Promise.all(productRefs.map((ref) => tx.get(ref))),
+        tx.get(counterRef),
+      ]);
+
+      const productsById = new Map();
+      const stockById = new Map();
+
+      productSnaps.forEach((snap, index) => {
+        const data = snap.exists ? snap.data() : {};
+        productsById.set(productIds[index], data);
+        stockById.set(productIds[index], snap.exists ? (data.quantity ?? 0) : 0);
+      });
+
+      // Re-validate stock is still available right before committing the
+      // sale -- it may have changed since the PaymentIntent was created.
+      const shortProductId = findInsufficientStock(needed, stockById);
+
+      if (shortProductId) {
+        throw new InsufficientStockError(shortProductId);
+      }
+
+      const nextOrderNumber = (counterSnap.exists ? (counterSnap.data().count || 0) : 0) + 1;
+      const orderNumber = `LSV-${String(nextOrderNumber).padStart(6, "0")}`;
+      const createdAt = admin.firestore.FieldValue.serverTimestamp();
+
+      const sellerOrderIds = [];
+
+      freshPending.sellers.forEach((seller, index) => {
+        const sellerOrderId = `${orderId}_${seller.sellerId}`;
+        sellerOrderIds.push(sellerOrderId);
+
+        const sellerOrder = buildSellerOrder({
+          checkoutId: orderId,
+          buyerId: freshPending.buyerId,
+          seller,
+          items: freshPending.items,
+          productsById,
+          orderNumber: `${orderNumber}-${index + 1}`,
+          deliveryAddress: address,
+          paymentIntent,
+          chargeType: freshPending.chargeType,
+          taxLiabilityAtPurchase: freshPending.taxLiabilityAtPurchase || "not_yet_determined",
+          createdAt,
+        });
+
+        tx.set(db.collection("sellerOrders").doc(sellerOrderId), sellerOrder);
+
+        tx.set(db.collection("notifications").doc(), {
+          userId: seller.sellerId,
+          type: "new_order",
+          title: "New Order Received",
+          message: `${describePurchase(sellerOrder.products)} was purchased.`,
+          link: `seller-orders.html?orderId=${sellerOrderId}`,
+          read: false,
+          createdAt,
+        });
+      });
+
+      tx.set(
+        db.collection("checkoutOrders").doc(orderId),
+        buildCheckoutOrder({
+          checkoutId: orderId,
+          pending: freshPending,
+          orderNumber,
+          deliveryAddress: address,
+          sellerOrderIds,
+          paymentIntent,
+          createdAt,
+        })
+      );
+
+      tx.set(db.collection("notifications").doc(), {
+        userId: freshPending.buyerId,
+        type: "order_placed",
+        title: "Order Confirmed",
+        message: "Your order has been placed successfully.",
+        link: `order.html?orderId=${orderId}`,
+        read: false,
+        createdAt,
+      });
+
+      productIds.forEach((productId, index) => {
+        const product = productsById.get(productId);
+        const newQuantity = stockById.get(productId) - needed.get(productId);
+
+        tx.update(productRefs[index], { quantity: newQuantity });
+
+        if (newQuantity <= 5 && newQuantity > 0) {
+          tx.set(db.collection("notifications").doc(), {
+            userId: product.sellerId,
+            type: "low_stock",
+            title: "Low Inventory",
+            message: `Only ${newQuantity} ${product.name} left in stock.`,
+            link: `seller dashboard.html?highlightProduct=${productId}`,
+            read: false,
+            createdAt,
+          });
+        }
+      });
+
+      (freshPending.cartItemIds || []).forEach((cartItemId) => {
+        tx.delete(db.collection("carts").doc(cartItemId));
+      });
+
+      tx.set(counterRef, { count: nextOrderNumber }, { merge: true });
+
+      tx.update(pendingOrderRef, {
+        status: "completed",
+        orderIds: [orderId],
+        sellerOrderIds,
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { orderIds: [orderId], sellerOrderIds };
+    });
+
+  } catch (err) {
+
+    if (err instanceof InsufficientStockError) {
+
+      // Payment succeeded but stock ran out before we could fulfill it --
+      // refund instead of overselling. A Direct Charge also gives back
+      // Lesovia's application fee.
+      await stripe.refunds.create(
+        {
+          payment_intent: pendingOrder.stripePaymentIntentId,
+          ...(pendingOrder.chargeType === "direct" ? { refund_application_fee: true } : {}),
+        },
+        { ...stripeOptions, idempotencyKey: `refund_${orderId}` }
+      );
+
+      await pendingOrderRef.update({
+        status: "failed",
+        failureReason: "insufficient_stock_refunded",
+      });
+
+      return { success: false, status: "insufficient_stock_refunded" };
+    }
+
+    throw err;
+  }
+
+  await settleSellerTransfers(stripe, orderId, {
+    chargeType: pendingOrder.chargeType,
+    sellerOrderIds: result.sellerOrderIds,
+  });
+
+  return { success: true, orderIds: result.orderIds, sellerOrderIds: result.sellerOrderIds };
+}
+
+// The address is normally saved before the buyer pays. If the order was
+// created without one (a webhook got there first and none had been saved),
+// the buyer's own verifyPayment call supplies it -- never overwriting an
+// address that's already on the order.
+async function backfillDeliveryAddress(orderId, pendingOrder, deliveryAddress) {
+  const checkoutRef = db.collection("checkoutOrders").doc(orderId);
+  const checkoutSnap = await checkoutRef.get();
+
+  if (!checkoutSnap.exists || checkoutSnap.data().deliveryAddress) return;
+
+  await checkoutRef.update({ deliveryAddress });
+
+  for (const sellerOrderId of pendingOrder.sellerOrderIds || []) {
+    const ref = db.collection("sellerOrders").doc(sellerOrderId);
+    const snap = await ref.get();
+
+    if (snap.exists && !snap.data().deliveryAddress) {
+      await ref.update({ deliveryAddress });
+    }
+  }
+}
+
+// =================================
+// SAVE THE DELIVERY ADDRESS BEFORE PAYING
+// =================================
+// The buyer types their address in the checkout modal, after the
+// PaymentIntent already exists. Saving it on the pending checkout before the
+// card is charged means an order created by the webhook (buyer closed the
+// tab) still knows where to ship. Required fields are enforced here, before
+// any money moves -- same rule the checkout form applies.
+exports.saveCheckoutAddress = onRequest(
+  {
+    cors: true
+  },
+
+  async (req, res) => {
+
+    try {
+
+      const buyerId = await getUidFromRequest(req);
+
+      if (!buyerId) {
+        return res.status(401).send({ error: "Authentication required." });
+      }
+
+      const { orderId, deliveryAddress: rawDeliveryAddress } = req.body || {};
+
+      if (!orderId || typeof orderId !== "string") {
+        return res.status(400).send({ error: "Missing orderId." });
+      }
+
+      const address = sanitizeDeliveryAddress(rawDeliveryAddress);
+
+      if (!address || !address.fullName || !address.line1 || !address.city ||
+          !address.state || !address.zip || !address.country) {
+        return res.status(400).send({ error: "Please fill in your full name, address, city, state, ZIP, and country." });
+      }
+
+      const pendingOrderRef = db.collection("pendingOrders").doc(orderId);
+      const pendingSnap = await pendingOrderRef.get();
+
+      if (!pendingSnap.exists) {
+        return res.status(404).send({ error: "Order not found." });
+      }
+
+      const pendingOrder = pendingSnap.data();
+
+      if (pendingOrder.buyerId !== buyerId) {
+        return res.status(403).send({ error: "This order does not belong to you." });
+      }
+
+      if (pendingOrder.status !== "pending_payment") {
+        return res.status(409).send({ error: "This checkout is no longer open." });
+      }
+
+      await pendingOrderRef.update({ deliveryAddress: address });
+
+      res.send({ saved: true });
 
     } catch (error) {
 
@@ -291,12 +939,11 @@ exports.createPaymentIntent = onRequest(
 );
 
 // =================================
-// VERIFY PAYMENT AND FINALIZE ORDER
+// VERIFY PAYMENT (called by the buyer's browser right after paying)
 // =================================
-// The ONLY place an order is ever marked "paid". Re-checks the payment with
-// Stripe directly (never trusts the client's local confirmCardPayment result),
-// then atomically creates the order(s), decrements inventory, and notifies
-// buyer + seller. Idempotent: safe to call more than once for the same order.
+// Authenticates the buyer, then hands off to finalizePendingOrder. The
+// Stripe webhooks call the same function, so it doesn't matter which one
+// gets there first.
 exports.verifyPayment = onRequest(
   {
     secrets: ["STRIPE_SECRET_KEY"],
@@ -334,188 +981,11 @@ exports.verifyPayment = onRequest(
         return res.status(403).send({ error: "This order does not belong to you." });
       }
 
-      // Already finalized -- return the same result, do not reprocess.
-      if (pendingOrder.status === "completed") {
-        return res.send({ success: true, orderIds: pendingOrder.orderIds || [] });
-      }
-
-      if (pendingOrder.status === "failed") {
-        return res.send({ success: false, status: pendingOrder.failureReason || "failed" });
-      }
-
       const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-      const paymentIntent = await stripe.paymentIntents.retrieve(
-        pendingOrder.stripePaymentIntentId
-      );
 
-      if (
-        paymentIntent.status !== "succeeded" ||
-        paymentIntent.amount !== pendingOrder.amount
-      ) {
-        await pendingOrderRef.update({
-          status: "failed",
-          failureReason: paymentIntent.status,
-        });
+      const outcome = await finalizePendingOrder(stripe, orderId, pendingOrder, deliveryAddress);
 
-        return res.send({ success: false, status: paymentIntent.status });
-      }
-
-      let orderIds;
-
-      try {
-
-        orderIds = await db.runTransaction(async (tx) => {
-
-          // Re-read inside the transaction in case a concurrent verifyPayment
-          // call for the same order is racing this one.
-          const freshSnap = await tx.get(pendingOrderRef);
-          const freshPending = freshSnap.data();
-
-          if (freshPending.status === "completed") {
-            return freshPending.orderIds || [];
-          }
-
-          const productRefs = freshPending.items.map((item) =>
-            db.collection("products").doc(item.productId)
-          );
-
-          // Firestore transactions require every read before any write, so
-          // the order-number counter is read here alongside the product
-          // stock, even though it's only written once at the end of the
-          // loop below.
-          const counterRef = db.collection("counters").doc("orders");
-
-          const [productSnaps, counterSnap] = await Promise.all([
-            Promise.all(productRefs.map((ref) => tx.get(ref))),
-            tx.get(counterRef),
-          ]);
-
-          let nextOrderNumber = counterSnap.exists
-            ? (counterSnap.data().count || 0)
-            : 0;
-
-          // Re-validate stock is still available right before committing the
-          // sale -- it may have changed since the PaymentIntent was created.
-          for (let i = 0; i < freshPending.items.length; i++) {
-            const item = freshPending.items[i];
-            const snap = productSnaps[i];
-            const available = snap.exists ? (snap.data().quantity ?? 0) : 0;
-
-            if (available < item.quantity) {
-              throw new InsufficientStockError(item.productId);
-            }
-          }
-
-          const newOrderIds = [];
-
-          for (let i = 0; i < freshPending.items.length; i++) {
-            const item = freshPending.items[i];
-            const product = productSnaps[i].data();
-            const orderRef = db.collection("orders").doc(`${orderId}_${item.productId}`);
-
-            newOrderIds.push(orderRef.id);
-
-            nextOrderNumber += 1;
-            const orderNumber = `LSV-${String(nextOrderNumber).padStart(6, "0")}`;
-
-            tx.set(orderRef, {
-              productId: item.productId,
-              sellerId: item.sellerId,
-              userId: freshPending.buyerId,
-              quantity: item.quantity,
-              color: item.color,
-              size: item.size,
-              price: item.unitPriceCents / 100,
-              status: "paid",
-              stripePaymentIntentId: freshPending.stripePaymentIntentId,
-              checkoutId: orderId,
-              orderNumber,
-              deliveryAddress: deliveryAddress,
-              trackingNumber: null,
-              // Snapshot of the product AT THE MOMENT OF PURCHASE -- orders
-              // are a historical record and must stay intact even if the
-              // seller edits or deletes the listing later. Never re-fetch
-              // the live product doc to display an order; use these instead.
-              productName: product.name || "Product",
-              productImage: product.images?.[0] || product.imageURL || null,
-              productDescription: product.description || null,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            const newQuantity = product.quantity - item.quantity;
-
-            tx.update(productRefs[i], { quantity: newQuantity });
-
-            tx.set(db.collection("notifications").doc(), {
-              userId: item.sellerId,
-              type: "new_order",
-              title: "New Order Received",
-              message: `${product.name} was purchased.`,
-              link: `seller-orders.html?orderId=${orderRef.id}`,
-              read: false,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            tx.set(db.collection("notifications").doc(), {
-              userId: freshPending.buyerId,
-              type: "order_placed",
-              title: "Order Confirmed",
-              message: `Your order for "${product.name}" has been placed successfully.`,
-              link: `order.html?orderId=${orderRef.id}`,
-              read: false,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            if (newQuantity <= 5 && newQuantity > 0) {
-              tx.set(db.collection("notifications").doc(), {
-                userId: item.sellerId,
-                type: "low_stock",
-                title: "Low Inventory",
-                message: `Only ${newQuantity} ${product.name} left in stock.`,
-                link: `seller dashboard.html?highlightProduct=${item.productId}`,
-                read: false,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              });
-            }
-          }
-
-          (freshPending.cartItemIds || []).forEach((cartItemId) => {
-            tx.delete(db.collection("carts").doc(cartItemId));
-          });
-
-          tx.set(counterRef, { count: nextOrderNumber }, { merge: true });
-
-          tx.update(pendingOrderRef, {
-            status: "completed",
-            orderIds: newOrderIds,
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-
-          return newOrderIds;
-        });
-
-      } catch (err) {
-
-        if (err instanceof InsufficientStockError) {
-
-          // Payment succeeded but stock ran out before we could fulfill it --
-          // refund the TEST charge instead of overselling.
-          await stripe.refunds.create({
-            payment_intent: pendingOrder.stripePaymentIntentId,
-          });
-
-          await pendingOrderRef.update({
-            status: "failed",
-            failureReason: "insufficient_stock_refunded",
-          });
-
-          return res.send({ success: false, status: "insufficient_stock_refunded" });
-        }
-
-        throw err;
-      }
-
-      res.send({ success: true, orderIds });
+      res.send(outcome);
 
     } catch (error) {
 
@@ -526,6 +996,436 @@ exports.verifyPayment = onRequest(
     }
 
   }
+);
+
+// =================================
+// STRIPE CONNECT: SELLER ONBOARDING
+// =================================
+// Creates (once) a Stripe connected account for the calling seller and
+// returns a Stripe-hosted onboarding link. The account is always created
+// for, and the link always scoped to, the authenticated caller's own uid
+// -- never a sellerId supplied by the client. Safe to call again for a
+// seller who already has an account (e.g. to resume/continue onboarding);
+// it reuses their existing stripeAccountId instead of creating a second one.
+exports.createConnectOnboardingLink = onRequest(
+  {
+    secrets: ["STRIPE_SECRET_KEY", "APP_URL"],
+    cors: true,
+  },
+
+  async (req, res) => {
+
+    try {
+
+      const decoded = await getDecodedTokenFromRequest(req);
+
+      if (!decoded) {
+        return res.status(401).send({ error: "Authentication required." });
+      }
+
+      const userRef = db.collection("users").doc(decoded.uid);
+      const userSnap = await userRef.get();
+
+      if (!userSnap.exists) {
+        return res.status(404).send({ error: "User profile not found." });
+      }
+
+      const userData = userSnap.data();
+
+      if (userData.role !== "seller") {
+        return res.status(403).send({ error: "Only sellers can connect a payout account." });
+      }
+
+      const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+      let stripeAccountId = userData.stripeAccountId;
+
+      if (!stripeAccountId) {
+        // Created with controller settings rather than type: "express" --
+        // Stripe no longer allows Direct Charges on legacy Express accounts
+        // for new platforms, and rejects the Express dashboard unless the
+        // platform itself collects fees and carries losses. Stripe billing
+        // the seller for its own processing fees (fees.payer: "account") is
+        // only available with the full Stripe Dashboard, so that is what
+        // sellers get. Stripe still hosts the onboarding. These settings
+        // can't be changed later, only replaced with a new account.
+        const account = await stripe.accounts.create({
+          controller: {
+            stripe_dashboard: { type: "full" },
+            fees: { payer: "account" },
+            losses: { payments: "stripe" },
+            requirement_collection: "stripe",
+          },
+          email: decoded.email,
+          capabilities: {
+            card_payments: { requested: true },
+            transfers: { requested: true },
+          },
+        });
+
+        stripeAccountId = account.id;
+
+        await userRef.set(
+          {
+            stripeAccountId,
+            stripeChargesEnabled: false,
+            stripePayoutsEnabled: false,
+            stripeDetailsSubmitted: false,
+            stripeOnboardingStatus: "pending",
+          },
+          { merge: true }
+        );
+      }
+
+      const origin = new URL(process.env.APP_URL).origin;
+
+      const accountLink = await stripe.accountLinks.create({
+        account: stripeAccountId,
+        refresh_url: `${origin}/seller-profile.html?stripeOnboarding=refresh`,
+        return_url: `${origin}/seller-profile.html?stripeOnboarding=return`,
+        type: "account_onboarding",
+      });
+
+      res.send({ url: accountLink.url });
+
+    } catch (error) {
+
+      logger.error(error);
+
+      res.status(500).send({ error: error.message });
+
+    }
+
+  }
+);
+
+// =================================
+// STRIPE WEBHOOKS
+// =================================
+// Stripe calls these directly, independent of any buyer's browser. There are
+// TWO endpoints because Stripe delivers two genuinely separate event streams
+// (docs.stripe.com/connect/webhooks), each with its own signing secret:
+//
+//   stripeWebhookConnect  -- "Connected accounts" scope. Events that happen ON a
+//     seller's account: their onboarding status (account.updated), and every
+//     single-seller Direct Charge (payment, refund, dispute) plus their payouts.
+//     Each carries a top-level `account` naming the seller's account.
+//   stripeWebhookPlatform -- "Your account" scope. Events on Lesovia's own
+//     account: multi-seller charges, and the Transfers to sellers.
+//
+// Both run the same handlers below. Nothing is trusted from an event's
+// payload beyond identifying what it's about -- money state is re-fetched
+// from Stripe (finalizePendingOrder) or is an absolute value that's safe to
+// replay. The redirect a seller's browser follows back from onboarding, and
+// the buyer's browser after paying, are never the only proof of anything.
+async function notifyUser(userId, { type, title, message, link }) {
+  await db.collection("notifications").doc().set({
+    userId,
+    type,
+    title,
+    message,
+    link,
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function sellerOrdersForCharge(chargeId) {
+  if (!chargeId) return [];
+
+  const snap = await db.collection("sellerOrders").where("stripeChargeId", "==", chargeId).get();
+
+  return snap.docs.map((doc) => ({ id: doc.id, data: doc.data() }));
+}
+
+const dollars = (cents) => `$${(cents / 100).toFixed(2)}`;
+
+async function handleAccountUpdated(event) {
+  const account = event.data.object;
+
+  const usersSnap = await db
+    .collection("users")
+    .where("stripeAccountId", "==", account.id)
+    .limit(1)
+    .get();
+
+  if (usersSnap.empty) {
+    logger.error(`account.updated for unknown connected account: ${account.id}`);
+    return;
+  }
+
+  await usersSnap.docs[0].ref.set(
+    {
+      stripeChargesEnabled: Boolean(account.charges_enabled),
+      stripePayoutsEnabled: Boolean(account.payouts_enabled),
+      stripeDetailsSubmitted: Boolean(account.details_submitted),
+      stripeOnboardingStatus: computeOnboardingStatus(account),
+    },
+    { merge: true }
+  );
+}
+
+// The payment went through at Stripe. If the buyer's browser already told us,
+// this just re-checks the sellers were paid; if not (they closed the tab), this
+// is what creates the order.
+async function handlePaymentSucceeded(stripe, event) {
+  const paymentIntent = event.data.object;
+  const orderId = paymentIntent.metadata && paymentIntent.metadata.orderId;
+
+  if (!orderId) return; // not a Lesovia checkout
+
+  const pendingSnap = await db.collection("pendingOrders").doc(orderId).get();
+
+  if (!pendingSnap.exists) {
+    logger.error(`payment_intent.succeeded for unknown checkout ${orderId} (${paymentIntent.id})`);
+    return;
+  }
+
+  const pending = pendingSnap.data();
+
+  if (pending.stripePaymentIntentId !== paymentIntent.id) {
+    logger.error(`payment_intent.succeeded ${paymentIntent.id} doesn't match checkout ${orderId}`);
+    return;
+  }
+
+  // A Direct Charge's events arrive through the seller's account, a platform
+  // charge's through Lesovia's own -- anything else doesn't belong to this checkout.
+  if ((event.account || null) !== (pending.stripeAccountId || null)) {
+    logger.error(`payment_intent.succeeded for ${orderId} came from an unexpected account: ${event.account || "platform"}`);
+    return;
+  }
+
+  const outcome = await finalizePendingOrder(stripe, orderId, pending, null);
+
+  if (!outcome.success) {
+    logger.error(`Checkout ${orderId} was paid but could not be completed: ${outcome.status}`);
+  }
+}
+
+async function handleChargeRefunded(event) {
+  const charge = event.data.object;
+  const sellerOrders = await sellerOrdersForCharge(charge.id);
+
+  // No sub-orders: a refund we issued ourselves before an order existed (e.g.
+  // the last item sold out) -- nothing to update.
+  if (sellerOrders.length === 0) return;
+
+  const plan = planRefundUpdate(charge, sellerOrders);
+  const checkoutRef = db.collection("checkoutOrders").doc(sellerOrders[0].data.checkoutId);
+  const checkoutSnap = await checkoutRef.get();
+  const alreadyRefunded = checkoutSnap.exists ? checkoutSnap.data().refundedAmountCents || 0 : 0;
+
+  // Refunds only ever grow, so a late-arriving older event must not shrink
+  // what's recorded.
+  if (plan.checkout.refundedAmountCents < alreadyRefunded) return;
+
+  if (checkoutSnap.exists) {
+    await checkoutRef.update(plan.checkout);
+  }
+
+  for (const { id, patch } of plan.sellers) {
+    const before = sellerOrders.find((order) => order.id === id).data;
+
+    await db.collection("sellerOrders").doc(id).update(patch);
+
+    if (patch.refundedAmountCents > (before.refundedAmountCents || 0)) {
+      await notifyUser(before.sellerId, {
+        type: "refund",
+        title: "Order Refunded",
+        message: `${dollars(patch.refundedAmountCents)} of order ${before.orderNumber} was refunded to the buyer.`,
+        link: `seller-orders.html?orderId=${id}`,
+      });
+    }
+  }
+
+  if (plan.checkout.refundedAmountCents > alreadyRefunded) {
+    await notifyUser(sellerOrders[0].data.buyerId, {
+      type: "refund",
+      title: "Refund Issued",
+      message: `A refund of ${dollars(plan.checkout.refundedAmountCents - alreadyRefunded)} was issued for your order.`,
+      link: `order.html?orderId=${sellerOrders[0].data.checkoutId}`,
+    });
+  }
+}
+
+async function handleDispute(event) {
+  const dispute = event.data.object;
+  const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge && dispute.charge.id;
+  const sellerOrders = await sellerOrdersForCharge(chargeId);
+
+  if (sellerOrders.length === 0) return;
+
+  const patch = { ...disputePatch(dispute), disputeEventAt: event.created };
+
+  for (const { id, data } of sellerOrders) {
+    // Events can arrive out of order; never let an older one overwrite a newer.
+    if (data.disputeEventAt && data.disputeEventAt > event.created) continue;
+
+    await db.collection("sellerOrders").doc(id).update(patch);
+
+    if (event.type === "charge.dispute.created") {
+      await notifyUser(data.sellerId, {
+        type: "dispute",
+        title: "Payment Dispute",
+        message: `Order ${data.orderNumber}: ${describeDispute(dispute.status)}.`,
+        link: `seller-orders.html?orderId=${id}`,
+      });
+    }
+  }
+}
+
+// We create the transfers ourselves, so this only matters when one is reversed
+// (a refund, or Stripe/us clawing the money back).
+async function handleTransferReversed(event) {
+  const transfer = event.data.object;
+  const sellerOrderId = transfer.metadata && transfer.metadata.sellerOrderId;
+
+  if (!sellerOrderId) return;
+
+  const ref = db.collection("sellerOrders").doc(sellerOrderId);
+  const snap = await ref.get();
+
+  if (!snap.exists) return;
+
+  const patch = transferReversalPatch(transfer);
+  const before = snap.data();
+
+  if (before.transferStatus === patch.transferStatus && before.transferReversedCents === patch.transferReversedCents) {
+    return;
+  }
+
+  await ref.update(patch);
+
+  await notifyUser(before.sellerId, {
+    type: "transfer_reversed",
+    title: "Payment Reversed",
+    message: `${dollars(patch.transferReversedCents)} of the payment for order ${before.orderNumber} was reversed.`,
+    link: `seller-orders.html?orderId=${sellerOrderId}`,
+  });
+}
+
+// A payout to a seller's bank failed. Successful payouts need nothing here --
+// the seller's own Stripe Dashboard is the record of those.
+async function handlePayoutFailed(event) {
+  if (!event.account) return; // Lesovia's own payout, not a seller's
+
+  const usersSnap = await db
+    .collection("users")
+    .where("stripeAccountId", "==", event.account)
+    .limit(1)
+    .get();
+
+  if (usersSnap.empty) return;
+
+  const payout = event.data.object;
+  const reason = payout.failure_message ? ` Stripe says: ${String(payout.failure_message).slice(0, 200)}` : "";
+
+  await notifyUser(usersSnap.docs[0].id, {
+    type: "payout_failed",
+    title: "Payout Failed",
+    message: `A payout of ${dollars(payout.amount)} to your bank account didn't go through.${reason}`,
+    link: "seller-profile.html",
+  });
+}
+
+async function handleStripeEvent(stripe, event) {
+  switch (event.type) {
+    case "account.updated":
+      return handleAccountUpdated(event);
+
+    case "payment_intent.succeeded":
+      return handlePaymentSucceeded(stripe, event);
+
+    case "charge.refunded":
+      return handleChargeRefunded(event);
+
+    case "charge.dispute.created":
+    case "charge.dispute.updated":
+    case "charge.dispute.closed":
+      return handleDispute(event);
+
+    case "transfer.reversed":
+      return handleTransferReversed(event);
+
+    case "payout.failed":
+      return handlePayoutFailed(event);
+
+    // Every other event type is acknowledged and logged (below) with no
+    // handler, so Stripe doesn't redeliver it forever.
+    default:
+      return;
+  }
+}
+
+async function processStripeWebhook(req, res, { secret, scope }) {
+  let event;
+  const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.rawBody,
+      req.headers["stripe-signature"],
+      secret
+    );
+  } catch (error) {
+    logger.error(`${scope} webhook signature verification failed:`, error);
+    return res.status(400).send(`Webhook Error: ${error.message}`);
+  }
+
+  // Idempotent -- Stripe can and does redeliver the same event more than
+  // once. The handlers themselves are also safe to replay, so two deliveries
+  // racing each other can't do harm either.
+  const eventRef = db.collection("stripeWebhookEvents").doc(event.id);
+  const eventSnap = await eventRef.get();
+
+  if (eventSnap.exists) {
+    return res.status(200).send({ received: true, duplicate: true });
+  }
+
+  try {
+
+    await handleStripeEvent(stripe, event);
+
+    await eventRef.set({
+      type: event.type,
+      scope,
+      account: event.account || null,
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.status(200).send({ received: true });
+
+  } catch (error) {
+
+    // Not recorded as processed and answered with a 500, so Stripe retries.
+    logger.error(`Error handling ${scope} webhook event ${event.type}:`, error);
+    res.status(500).send({ error: error.message });
+
+  }
+}
+
+exports.stripeWebhookConnect = onRequest(
+  {
+    secrets: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET_CONNECT"],
+  },
+
+  (req, res) =>
+    processStripeWebhook(req, res, {
+      secret: process.env.STRIPE_WEBHOOK_SECRET_CONNECT,
+      scope: "connectedAccount",
+    })
+);
+
+exports.stripeWebhookPlatform = onRequest(
+  {
+    secrets: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET_PLATFORM"],
+  },
+
+  (req, res) =>
+    processStripeWebhook(req, res, {
+      secret: process.env.STRIPE_WEBHOOK_SECRET_PLATFORM,
+      scope: "platform",
+    })
 );
 
 exports.generateProductDescription = onRequest(
@@ -1145,3 +2045,22 @@ exports.sendNotificationEmail = onDocumentCreated(
     }
   }
 );
+// =================================
+// RETURNS AND CANCELLATIONS
+// =================================
+// Endpoints, the refund itself and the daily deadline sweep live in
+// returns.js (rules and money math in returnMath.js).
+const returns = require("./returns");
+
+exports.previewReturn = returns.previewReturn;
+exports.requestReturn = returns.requestReturn;
+exports.decideReturn = returns.decideReturn;
+exports.escalateReturn = returns.escalateReturn;
+exports.cancelReturn = returns.cancelReturn;
+exports.submitReturnTracking = returns.submitReturnTracking;
+exports.confirmReturnReceived = returns.confirmReturnReceived;
+exports.reportReturnProblem = returns.reportReturnProblem;
+exports.adminResolveReturn = returns.adminResolveReturn;
+exports.cancelUnshippedOrder = returns.cancelUnshippedOrder;
+exports.stampShipmentTimes = returns.stampShipmentTimes;
+exports.sweepReturnDeadlines = returns.sweepReturnDeadlines;

@@ -62,6 +62,23 @@ service firebase.storage {
         );
     }
 
+    // Return photos: path is returnPhotos/{buyerId}/{sellerId}/{returnId}/
+    // {fileName}. Only the buyer can upload (into their own folder, images
+    // under 5MB); only the buyer and the seller named in the path can read
+    // them through the SDK. Admins see them through the download links stored
+    // on the return itself, which only the buyer, seller and admins can read.
+    // The return endpoint checks the buyer and seller in the path really are
+    // the buyer and seller of the order before accepting a photo.
+    match /returnPhotos/{buyerId}/{sellerId}/{returnId}/{fileName} {
+      allow read: if request.auth != null
+        && (request.auth.uid == buyerId || request.auth.uid == sellerId);
+
+      allow write: if request.auth != null
+        && request.auth.uid == buyerId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Deny everything else by default.
     match /{allPaths=**} {
       allow read, write: if false;

@@ -60,6 +60,7 @@ onAuthStateChanged(auth, async (user) => {
   loadBuyers();
   loadSellerReviews();
   loadAdmins();
+  loadAdminReturns();
 
   // Search bars -- one per page, each a no-op if that input isn't present.
   wireAdminSearch("productSearch", "#adminProductGrid .admin-product-card");
@@ -70,6 +71,7 @@ onAuthStateChanged(auth, async (user) => {
   wireAdminSearch("userSearch", "#userList tbody tr");
   wireAdminSearch("productListSearch", "#productList tr");
   wireAdminSearch("reviewSearch", "#sellerReviewsList .admin-seller-section");
+  wireAdminSearch("returnSearch", "#adminReturns .admin-return-card");
 });
 
 // ================= USERS =================
@@ -234,8 +236,44 @@ window.deleteProduct = async function(productId) {
 };
 
 // ================= ORDERS =================
+// Product names are typed by sellers; anything they wrote must be inert when
+// shown in the admin's browser.
+function escapeCell(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function loadOrders() {
-  const snapshot = await getDocs(collection(db, "orders"));
+  // Older per-product orders plus the newer per-seller sub-orders, shown in
+  // the same table (a sub-order is normalized to the older order's shape).
+  const [legacySnapshot, subOrderSnapshot] = await Promise.all([
+    getDocs(collection(db, "orders")),
+    getDocs(collection(db, "sellerOrders"))
+  ]);
+
+  const allOrders = [
+    ...legacySnapshot.docs.map((d) => d.data()),
+    ...subOrderSnapshot.docs.map((d) => {
+      const subOrder = d.data();
+
+      return {
+        displayProductName: (subOrder.products || [])
+          .map((p) => `${p.name} x${p.quantity}`)
+          .join(", "),
+        userId: subOrder.buyerId,
+        sellerId: subOrder.sellerId,
+        createdAt: subOrder.createdAt,
+        status: subOrder.fulfillmentStatus,
+        shippedAt: subOrder.shippedAt,
+        deliveredAt: subOrder.deliveredAt
+      };
+    })
+  ];
+
   const orderList = document.getElementById("allOrders");
 
   if (!orderList) return;
@@ -253,12 +291,11 @@ async function loadOrders() {
     }
   };
 
-  for (const docSnap of snapshot.docs) {
-    const order = docSnap.data();
+  for (const order of allOrders) {
 
     try {
       // ================= FETCH RELATED DATA =================
-      let productName = "Unknown";
+      let productName = order.displayProductName || "Unknown";
       if (order.productId) {
         const productSnap = await getDoc(doc(db, "products", order.productId));
         if (productSnap.exists()) {
@@ -344,7 +381,7 @@ async function loadOrders() {
       // ================= RENDER =================
       orderList.innerHTML += `
         <tr>
-          <td>${productName}</td>
+          <td>${escapeCell(productName)}</td>
           <td>${buyerEmail}</td>
           <td>${sellerEmail}</td>
           <td>${created}</td>
@@ -660,6 +697,10 @@ async function loadBuyers() {
       query(collection(db, "orders"), where("userId", "==", docSnap.id))
     );
 
+    const subOrdersSnap = await getDocs(
+      query(collection(db, "sellerOrders"), where("buyerId", "==", docSnap.id))
+    );
+
     const created = await formatFirestoreDate(buyer.createdAt);
 
     container.innerHTML += `
@@ -667,7 +708,7 @@ async function loadBuyers() {
         <td>${buyer.fullName || "N/A"}</td>
         <td>${buyer.email || "N/A"}</td>
         <td>${created}</td>
-        <td>${ordersSnap.size}</td>
+        <td>${ordersSnap.size + subOrdersSnap.size}</td>
         <td style="color:${buyer.status === "banned" ? "red" : "green"};">
           ${buyer.status || "active"}
         </td>
@@ -780,3 +821,224 @@ async function loadSellerReviews() {
     `;
   }
 }
+// ================= ADMIN: RETURNS & REFUNDS (admin-returns.html) =================
+// The admin has the final say on every return: approve or decline at any point
+// before the item is sent, refund a returned package (in the standard way or in
+// full), close a return with no refund, or retry a refund that failed. Every
+// action goes through a Cloud Function, which does the checking and moves the
+// money -- this page never writes a return itself.
+const FUNCTIONS_BASE = "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/";
+
+async function adminReturnsApi(name, body) {
+  const response = await fetch(FUNCTIONS_BASE + name, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
+    },
+    body: JSON.stringify(body)
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) throw new Error(data.error || "Something went wrong.");
+
+  return data;
+}
+
+const RETURN_STATUS_LABEL = {
+  requested: "Waiting for the seller",
+  approved: "Approved - waiting for the buyer to send it back",
+  declined: "Declined",
+  escalated: "Needs an admin decision",
+  shipped_back: "Sent back - waiting for the seller to confirm",
+  problem_reported: "Seller reported a problem",
+  queued: "Refund queued",
+  refunding: "Refund in progress",
+  refund_failed: "Refund failed",
+  refunded: "Refunded",
+  rejected: "Closed without a refund",
+  cancelled: "Withdrawn by the buyer",
+  expired: "Expired"
+};
+
+const RETURN_NEEDS_ATTENTION = ["escalated", "problem_reported", "refund_failed"];
+const RETURN_IN_PROGRESS = ["requested", "approved", "declined", "shipped_back", "queued", "refunding"];
+
+const returnDollars = (cents) => `$${((Number(cents) || 0) / 100).toFixed(2)}`;
+const returnWhen = (ms) => (ms ? new Date(ms).toLocaleString() : "");
+
+let adminReturnsById = new Map();
+
+function adminReturnCardHtml(ret, names) {
+  const attention = RETURN_NEEDS_ATTENTION.includes(ret.status);
+  const plan = ret.plan || {};
+  const cancellation = ret.kind === "cancellation";
+
+  const money = plan.mode === "full"
+    ? `Full refund: <strong>${returnDollars(plan.buyerRefundCents)}</strong> (Lesovia gives its commission back; nothing is withheld).`
+    : `Buyer refunded: <strong>${returnDollars(plan.buyerRefundCents)}</strong> of ${returnDollars(plan.grossCents)} paid for these items.
+       Lesovia keeps ${returnDollars(plan.commissionKeptCents)} commission; ${returnDollars(plan.stripeFeeWithheldCents)} processing fee withheld${ret.stripeFeeEstimated ? " (estimated)" : ""}.`;
+
+  const canDecide = ["requested", "escalated", "declined", "approved"].includes(ret.status);
+  const canRefund = ["shipped_back", "problem_reported", "approved", "escalated", "refund_failed"].includes(ret.status);
+  const canReject = ["shipped_back", "problem_reported", "escalated", "approved", "declined", "refund_failed"].includes(ret.status);
+  const id = escapeCell(ret.id);
+
+  const buttons = [
+    canDecide && ret.status !== "approved" ? `<button onclick="adminReturnDecide('${id}','approve')">Approve return</button>` : "",
+    canDecide && ret.status !== "declined" ? `<button onclick="adminReturnDecide('${id}','decline')">Decline return</button>` : "",
+    canRefund ? `<button onclick="adminReturnRefund('${id}','standard')">Refund ${returnDollars(plan.buyerRefundCents)}${plan.mode === "full" ? "" : " (standard)"}</button>` : "",
+    canRefund && plan.mode !== "full" ? `<button onclick="adminReturnRefund('${id}','full')">Refund in full (${returnDollars(plan.grossCents)})</button>` : "",
+    ret.status === "refund_failed" ? `<button onclick="adminReturnRefund('${id}','skip')">Refund without reversing the seller (Lesovia covers it)</button>` : "",
+    canReject ? `<button onclick="adminReturnReject('${id}')">Close without a refund</button>` : ""
+  ].join("");
+
+  const history = (ret.history || [])
+    .map((h) => `<li>${escapeCell(returnWhen(h.atMs))} - ${escapeCell(String(h.action || "").replace(/_/g, " "))}${h.note ? `: ${escapeCell(h.note)}` : ""}</li>`)
+    .join("");
+
+  const photos = (ret.photos || [])
+    .map((p) => `<a href="${escapeCell(p.url)}" target="_blank" rel="noopener"><img src="${escapeCell(p.url)}" alt="Return photo"></a>`)
+    .join("");
+
+  return `
+    <div class="admin-return-card ${attention ? "needs-attention" : ""}" id="return-${id}">
+      <h3>${escapeCell(cancellation ? "Cancellation" : "Return")} - order ${escapeCell(ret.orderNumber)}
+        <span class="admin-return-status ${attention ? "attention" : ""}">${escapeCell(RETURN_STATUS_LABEL[ret.status] || ret.status)}</span>
+      </h3>
+      <div class="admin-return-meta">
+        Buyer: ${escapeCell(names.buyer)} &middot; Seller: ${escapeCell(names.seller)} &middot; Requested ${escapeCell(returnWhen(ret.requestedMs))}
+      </div>
+      <p><strong>Reason:</strong> ${escapeCell(ret.reasonLabel || ret.reason)}${ret.sellerFault ? " (seller-fault reason)" : ""}<br>
+         ${ret.description ? `<strong>Buyer's note:</strong> ${escapeCell(ret.description)}<br>` : ""}
+         <strong>Items:</strong> ${(ret.items || []).map((i) => `${escapeCell(i.name)} &times; ${escapeCell(i.quantity)}`).join(", ")}</p>
+      ${photos ? `<div class="admin-return-photos">${photos}</div>` : ""}
+      ${ret.returnTracking ? `<p><strong>Return tracking:</strong> ${escapeCell(ret.returnTracking.carrier)} ${escapeCell(ret.returnTracking.trackingNumber)}</p>` : ""}
+      ${ret.decisionNote ? `<p><strong>Decision note:</strong> ${escapeCell(ret.decisionNote)}</p>` : ""}
+      ${ret.problemNote ? `<p><strong>Seller's problem report:</strong> ${escapeCell(ret.problemNote)}</p>` : ""}
+      <div class="admin-return-money">${money}</div>
+      ${ret.refundError ? `<p class="admin-return-error"><strong>Refund error:</strong> ${escapeCell(ret.refundError)}</p>` : ""}
+      ${buttons ? `<div class="admin-return-actions">${buttons}</div>` : ""}
+      ${history ? `<ul class="admin-return-history">${history}</ul>` : ""}
+    </div>
+  `;
+}
+
+async function loadAdminReturns() {
+  const container = document.getElementById("adminReturns");
+
+  if (!container) return;
+
+  container.textContent = "Loading...";
+
+  const snapshot = await getDocs(collection(db, "returns"));
+  const returns = snapshot.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.requestedMs || 0) - (a.requestedMs || 0));
+
+  adminReturnsById = new Map(returns.map((r) => [r.id, r]));
+
+  const nameCache = new Map();
+  const nameOf = async (uid) => {
+    if (!nameCache.has(uid)) {
+      const snap = await getDoc(doc(db, "users", uid));
+      const data = snap.exists() ? snap.data() : {};
+      nameCache.set(uid, data.fullName || data.storeName || data.email || uid);
+    }
+    return nameCache.get(uid);
+  };
+
+  const groups = [
+    ["Needs your attention", returns.filter((r) => RETURN_NEEDS_ATTENTION.includes(r.status))],
+    ["In progress", returns.filter((r) => RETURN_IN_PROGRESS.includes(r.status))],
+    ["Finished", returns.filter((r) => !RETURN_NEEDS_ATTENTION.includes(r.status) && !RETURN_IN_PROGRESS.includes(r.status))]
+  ];
+
+  let html = "";
+
+  for (const [title, list] of groups) {
+    html += `<div class="admin-returns-group"><h3>${escapeCell(title)} (${list.length})</h3>`;
+
+    if (list.length === 0) html += `<p style="color:#5b6b62;">Nothing here.</p>`;
+
+    for (const ret of list) {
+      html += adminReturnCardHtml(ret, { buyer: await nameOf(ret.buyerId), seller: await nameOf(ret.sellerId) });
+    }
+
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
+
+  const wanted = new URLSearchParams(window.location.search).get("returnId");
+  const card = wanted && document.getElementById(`return-${wanted}`);
+
+  if (card) {
+    card.classList.add("highlight");
+    setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+  }
+}
+
+async function adminReturnAction(name, body, doneMessage) {
+  try {
+    const result = await adminReturnsApi(name, body);
+
+    if (result && result.status === "refund_failed") {
+      alert(`The refund could not be sent: ${result.error || "unknown error"}`);
+    } else if (doneMessage) {
+      alert(doneMessage);
+    }
+  } catch (err) {
+    alert(err.message);
+  }
+
+  await loadAdminReturns();
+}
+
+window.adminReturnDecide = async (returnId, decision) => {
+  const note = prompt(decision === "decline" ? "Reason for declining (the buyer and seller will see this):" : "Optional note for the buyer and seller:");
+
+  if (note === null) return;
+
+  if (decision === "decline" && note.trim().length < 5) {
+    alert("Please give a short reason.");
+    return;
+  }
+
+  await adminReturnAction("decideReturn", { returnId, decision, note: note.trim() }, decision === "approve" ? "Return approved." : "Return declined.");
+};
+
+window.adminReturnRefund = async (returnId, mode) => {
+  const ret = adminReturnsById.get(returnId);
+  const plan = (ret && ret.plan) || {};
+  const full = mode === "full" || plan.mode === "full";
+  const amount = returnDollars(mode === "full" ? plan.grossCents : plan.buyerRefundCents);
+
+  const detail = {
+    standard: "Lesovia keeps its commission and the processing fee is withheld.",
+    full: "FULL refund: Lesovia gives its commission back and nothing is withheld.",
+    skip: "Lesovia will cover this: the seller will NOT be charged for the refund."
+  }[mode];
+
+  if (!confirm(`Refund ${amount} to the buyer now?\n\n${detail}\n\nThis sends real money and can't be undone.`)) return;
+
+  await adminReturnAction(
+    "adminResolveReturn",
+    { returnId, action: "refund", refundInFull: mode === "full", skipReversal: mode === "skip" },
+    full ? "Refunded in full." : "Refund sent."
+  );
+};
+
+window.adminReturnReject = async (returnId) => {
+  const note = prompt("Reason for closing this return with NO refund (the buyer and seller will see this):");
+
+  if (note === null) return;
+
+  if (note.trim().length < 5) {
+    alert("Please give a short reason.");
+    return;
+  }
+
+  await adminReturnAction("adminResolveReturn", { returnId, action: "reject", note: note.trim() }, "Return closed without a refund.");
+};

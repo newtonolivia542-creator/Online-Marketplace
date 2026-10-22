@@ -3,7 +3,8 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 //import { getStorage, ref, uploadBytes } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
-const firebaseConfig = {
+// Exported so the phone-verification helper can start its own throwaway session.
+export const firebaseConfig = {
   apiKey: "AIzaSyD81ZSor8uVttafgktmeQXMqf-7dQ2Uhj4",
   authDomain: "online-marketplace-e99cd.firebaseapp.com",
   projectId: "online-marketplace-e99cd",

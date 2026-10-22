@@ -440,3 +440,240 @@ label{
 .profile-container h2{
   margin-bottom:25px;
 }
+
+/* ================= SELLER DASHBOARD HEADER + MENU TILES ================= */
+.dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 25px;
+}
+
+.dash-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.dash-brand-mark {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.dash-title {
+  text-align: center;
+}
+
+.dash-title h1 {
+  background: none;
+  padding: 0;
+  margin: 0;
+  font-size: 22px;
+}
+
+.dash-title h2 {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  color: #cfd8d3;
+}
+
+.dash-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 0 20px;
+  background: none;
+  box-sizing: border-box;
+}
+
+.dash-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 12px 16px;
+  box-sizing: border-box;
+  background: var(--lv-surface, #fff);
+  color: var(--lv-ink, #14231B);
+  border: 1px solid var(--lv-line, #ddd);
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.dash-tile:hover { border-color: var(--lv-green, #2f6f4f); }
+.dash-tile:active { transform: scale(0.98); }
+.dash-tile:focus-visible { outline: 3px solid var(--lv-green, #2f6f4f); outline-offset: 2px; }
+
+.dash-icon {
+  flex: none;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.dash-badge {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  border-radius: 13px;
+  background: #d92d20;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ================= PHONES (iPhone and similar) =================
+   Bigger text, 48px+ touch targets, and inputs at 16px so iOS Safari
+   doesn't zoom the page when one is tapped. */
+@media (max-width: 700px) {
+  body { font-size: 17px; line-height: 1.45; }
+
+  h1 { font-size: 24px; padding: 16px; }
+  h2 { font-size: 22px; }
+  h3 { font-size: 20px; }
+
+  p, li, label { font-size: 17px; }
+
+  /* Header: logo + logout on one row, title underneath */
+  .dash-header {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+  .dash-brand { order: 1; }
+  #logoutBtn { order: 2; }
+  .dash-title { order: 3; flex: 1 0 100%; text-align: left; }
+  .dash-title h1 { font-size: 26px; }
+  .dash-title h2 { font-size: 16px; }
+
+  /* Every button and link-button: comfortably tappable */
+  button,
+  .btn {
+    min-height: 48px;
+    font-size: 17px;
+    padding: 12px 18px;
+  }
+  #logoutBtn { min-height: 48px; font-size: 17px; font-weight: 700; padding: 10px 20px; }
+
+  nav { padding: 10px 16px; }
+
+  input, textarea, select {
+    font-size: 17px;
+    min-height: 48px;
+    padding: 12px;
+  }
+  textarea { min-height: 120px; }
+  input[type="checkbox"], input[type="radio"] {
+    width: 26px;
+    height: 26px;
+    min-height: 0;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+
+  /* Menu tiles: two per row, big and bold; Notifications spans the row */
+  .dash-tiles {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 14px;
+    margin: 14px auto;
+  }
+  .dash-tile {
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+    min-height: 92px;
+    padding: 12px 8px;
+    font-size: 18px;
+  }
+  .dash-icon { font-size: 32px; }
+  .dash-tile-wide {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    min-height: 64px;
+    gap: 12px;
+  }
+  .dash-tile-wide .dash-badge { margin-left: 0; }
+  .dash-badge { position: static; }
+
+  #currentStoreName, #currentStoreDescription { padding: 0 16px; }
+  #currentStoreDescription { font-size: 17px; }
+
+  #phoneReminder { margin: 12px 14px; max-width: none; font-size: 17px; }
+  #phoneReminder a { display: inline-block; padding: 8px 0; font-weight: 700; }
+
+  /* Layout containers */
+  main {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 14px;
+  }
+  #stats-summary, #productForm, #my-listings, #messages-section, #sold-section { grid-column: 1; }
+
+  section, form { padding: 16px; }
+
+  .profile-container {
+    margin: 16px 12px;
+    padding: 18px;
+    max-width: none;
+  }
+  .profile-container input,
+  .profile-container textarea { font-size: 17px; }
+
+  #soldProducts, #sellerMessages { margin: 14px 12px; padding: 16px; }
+
+  /* Listings: one card per row, readable text, big Edit/Delete */
+  #my-listings { margin: 0 12px; }
+  #sellerProducts { grid-template-columns: 1fr; gap: 16px; }
+  #sellerProducts div { padding: 14px; font-size: 17px; }
+  #sellerProducts img,
+  .image-slider img { height: 220px; }
+  #sellerProducts .btn-group { display: flex; gap: 10px; padding: 0; box-shadow: none; background: none; }
+  #sellerProducts .btn-group button { flex: 1; min-height: 52px; font-size: 18px; font-weight: 700; }
+
+  /* No hover on a phone: picture arrows are always visible and big */
+  .image-slider button {
+    opacity: 1;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 20px;
+  }
+
+  /* Reviews / orders / messages */
+  .review-card { flex-direction: column; padding: 16px; }
+  .product-img { width: 100%; height: 200px; }
+  .stars { font-size: 24px; }
+  .message-status { font-size: 14px; }
+  .chat-box { max-height: 300px; font-size: 17px; }
+
+  .notification-btn { padding: 14px 20px; font-size: 18px; }
+
+  /* Footer links stack with room to tap */
+  .footer-links a { display: inline-block; padding: 10px 8px; font-size: 16px; }
+
+  /* Buttons that sit directly on the page (e.g. Save Profile, Back) */
+  body > button:not(#logoutBtn) {
+    display: block;
+    width: calc(100% - 24px);
+    margin: 0 12px 16px;
+    background: var(--lv-green, #2f6f4f);
+    color: #fff;
+    font-weight: 700;
+  }
+  body > a.btn { margin-left: 12px; }
+}

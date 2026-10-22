@@ -249,6 +249,19 @@ service cloud.firestore {
     }
 
     // =========================
+    // ACCOUNT RECOVERY (the phone number a seller keeps for password recovery)
+    // =========================
+    // Written ONLY by the recovery Cloud Functions, after the number has been
+    // verified by a texted code. The owner can read their own record (so the
+    // page can show "recovery phone ending in 0123"); nobody else can, and no
+    // client can write or list it. Deliberately NOT part of the users
+    // document, which every signed-in user can read.
+    match /accountRecovery/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // =========================
     // PUBLIC CONFIG (return policy numbers)
     // =========================
     // publicConfig/returnPolicy holds the return/cancellation policy numbers

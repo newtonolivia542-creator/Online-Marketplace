@@ -455,3 +455,26 @@ test("publicConfig: anyone can read the return policy; nobody can change it from
     denied(await as(uid).delete("publicConfig/returnPolicy"), `${uid} delete`);
   }
 });
+
+
+// ---------------------------------------------------------- accountRecovery
+test("accountRecovery: only the owner can read their own record; nobody can list or write", async () => {
+  await reset(); await seedPeople();
+  await seed("accountRecovery/seller1", { phone: "+17125550123" });
+  await seed("accountRecovery/seller2", { phone: "+17125550999" });
+
+  ok(await as("seller1").get("accountRecovery/seller1"));
+  denied(await as("seller2").get("accountRecovery/seller1"));
+  denied(await as("buyer1").get("accountRecovery/seller1"));
+  denied(await as("admin1").get("accountRecovery/seller1"));
+  denied(await as(null).get("accountRecovery/seller1"));
+
+  denied(await as("seller1").listAll("accountRecovery"));
+  denied(await as("admin1").listAll("accountRecovery"));
+
+  for (const uid of ["seller1", "seller2", "admin1"]) {
+    denied(await as(uid).update("accountRecovery/seller1", { phone: "+10000000000" }), `${uid} update`);
+    denied(await as(uid).create("accountRecovery/new", { phone: "+10000000000" }), `${uid} create`);
+    denied(await as(uid).delete("accountRecovery/seller1"), `${uid} delete`);
+  }
+});

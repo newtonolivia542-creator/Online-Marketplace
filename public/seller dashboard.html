@@ -6,6 +6,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/lesovia.css">
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Seller Dashboard | Lesovia</title>
 
   <meta name="description" content="Manage your store and listings on Lesovia.">
@@ -22,62 +23,44 @@
 </head>
 <body>
 
-  <header class="navbar" style="display:flex;align-items:center;justify-content:space-between;padding:15px 25px;">
-    <div class="logo">
-      <a href="seller dashboard.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;">
-        <img src="../images/lesovia-mark.svg" alt="Lesovia" style="width:42px;height:42px;object-fit:contain;">
-        <span class="logo-text">Lesovia</span>
-      </a>
-    </div>
-    <div style="text-align:center;">
-      <h1 style="background:none;padding:0;margin:0;font-size:22px;">Seller Dashboard</h1>
-      <h2 id="welcome" style="margin:2px 0 0;font-size:13px;font-weight:400;color:var(--lv-slate-soft,#8A968F);"></h2>
+  <header class="navbar dash-header">
+    <a href="seller dashboard.html" class="dash-brand">
+      <img src="../images/lesovia-mark.svg" alt="Lesovia" class="dash-brand-mark">
+      <span class="logo-text">Lesovia</span>
+    </a>
+    <div class="dash-title">
+      <h1>Seller Dashboard</h1>
+      <h2 id="welcome"></h2>
     </div>
     <button id="logoutBtn" class="btn btn-danger">Logout</button>
   </header>
 
 
+<div id="phoneReminder" style="display:none; margin:12px 0; padding:12px 16px; border:1px solid #f0d58a; background:#fff8e6; border-radius:8px; max-width:640px;">
+  <strong>Add a recovery phone number.</strong>
+  If you ever can't use your email, you'll be able to reset your password by text message.
+  <a href="seller-profile.html#security">Add it now</a>
+  <button id="phoneReminderDismiss" type="button" style="margin-left:8px;">Not now</button>
+</div>
+
 <h2 id="currentStoreName"></h2>
 <p id="currentStoreDescription"></p>
 
-  <button class="btn btn-secondary" onclick="window.location.href='seller-upload.html'">Upload Products</button>
-    <button class="btn btn-secondary" onclick="window.location.href='seller-messages.html'">View Messages</button>
+<nav class="dash-tiles" aria-label="Seller menu">
+  <a class="dash-tile" href="seller-upload.html"><span class="dash-icon" aria-hidden="true">📦</span><span>Upload Products</span></a>
+  <a class="dash-tile" href="seller-orders.html"><span class="dash-icon" aria-hidden="true">🧾</span><span>View Orders</span></a>
+  <a class="dash-tile" href="seller-messages.html"><span class="dash-icon" aria-hidden="true">💬</span><span>View Messages</span></a>
+  <a class="dash-tile" href="seller-returns.html"><span class="dash-icon" aria-hidden="true">↩️</span><span>Returns &amp; Refunds</span></a>
+  <a class="dash-tile" href="seller-history.html"><span class="dash-icon" aria-hidden="true">🕘</span><span>View History</span></a>
+  <a class="dash-tile" href="seller-reviews.html"><span class="dash-icon" aria-hidden="true">⭐</span><span>View Reviews</span></a>
+  <a class="dash-tile dash-tile-wide" href="seller-profile.html"><span class="dash-icon" aria-hidden="true">🏪</span><span>Edit Store Profile</span></a>
+  <a class="dash-tile dash-tile-wide" href="seller-notifications.html">
+    <span class="dash-icon" aria-hidden="true">🔔</span><span>Notifications</span>
+    <span id="notificationBadge" class="dash-badge" style="display:none;">0</span>
+  </a>
+</nav>
 
-    <button class="btn btn-secondary" onclick="window.location.href='seller-orders.html'">
-      View Orders
-    </button>
-    <button class="btn btn-secondary" onclick="window.location.href='seller-history.html'">View History</button>
-
-    <button class="btn btn-secondary" onclick="window.location.href='seller-profile.html'">
-      Edit Store Profile
-    </button>
-
-    <button class="btn btn-secondary" onclick="window.location.href='seller-reviews.html'">
-      ⭐ View Reviews
-    </button>
-
-  <hr>
-<div class="notification-wrapper">
-<a
-    href="seller-notifications.html"
-    class="notification-btn"
->
-
-🔔 Notifications
-
-    <span
-        id="notificationBadge"
-        class="notification-badge"
-        style="display:none;"
-    >
-        0
-    </span>
-</a>
-</div>
-
-
-
-  <section id="my-listings">
+<section id="my-listings">
     <h3>Your Active Listings</h3>
     <div id="sellerProducts"></div>
   </section>

@@ -13,6 +13,15 @@ header {
   align-items: center;
 }
 
+/* lesovia.css paints every h2 dark ink, which vanished on the dark header */
+header h2,
+.navbar h2 {
+  color: #E8F5EC;
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+}
+
 #logoutBtn {
   background: #ef4444;
   border: none;
@@ -740,4 +749,248 @@ button[onclick]:hover {
   margin: 80px auto;
   padding: 20px;
   border-radius: 10px;
+}
+
+/* ================= PHONES (iPhone and similar) =================
+   Bigger text, 48px+ touch targets, and 16px+ inputs so iOS Safari
+   doesn't zoom the page when a field is tapped. Loaded by the buyer pages
+   (shop, cart, orders, product detail, messages, notifications). */
+@media screen and (max-width: 700px) {
+  body { font-size: 17px; line-height: 1.45; }
+
+  h1 { font-size: 26px; }
+  h2 { font-size: 22px; }
+  h3 { font-size: 20px; }
+  p, li, label { font-size: 17px; }
+
+  /* Header: logo / name / logout stack tidily with a big Logout */
+  header,
+  .navbar {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  header h2, .navbar h2 { font-size: 17px; margin: 0; }
+
+  /* Compact header: logo + Logout on one row, "Welcome, Name" underneath */
+  header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    gap: 6px 12px;
+    padding: 10px 16px;
+  }
+  header nav.navbar { padding: 0; order: 1; }
+  header #logoutBtn { order: 2; min-height: 44px; padding: 8px 18px; }
+  header h2#welcome { order: 3; flex: 1 0 100%; }
+  header .logo img { width: 40px; height: 40px; }
+  header .logo-text,
+  header .logo span { font-size: 24px !important; }
+  .nav-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .nav-actions br { display: none; }
+
+  #logoutBtn {
+    min-height: 48px;
+    padding: 10px 20px;
+    font-size: 17px;
+    font-weight: 700;
+    border-radius: 8px;
+  }
+
+  .btn,
+  button,
+  .dashboard-btn,
+  .notification-btn {
+    min-height: 48px;
+    font-size: 17px;
+  }
+  .btn { padding: 12px 18px; }
+
+  /* Fields */
+  input, textarea, select {
+    font-size: 17px;
+    min-height: 48px;
+    box-sizing: border-box;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    width: 26px;
+    height: 26px;
+    min-height: 0;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+
+  /* Search + AI search (loose elements on the shop home) */
+  #searchInput,
+  #aiSearchInput,
+  #categoryFilter {
+    display: block;
+    width: calc(100% - 28px);
+    margin: 10px 14px;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+  }
+  #searchBtn,
+  #aiSearchBtn {
+    display: block;
+    width: calc(100% - 28px);
+    margin: 0 14px 10px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: #4facfe;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  #aiSearchBtn { background: #1f6fb2; }
+  main > h2, body > h2 { margin-left: 14px; margin-right: 14px; }
+  .search-container { margin: 10px 14px; }
+  .search-container #searchInput,
+  .search-container #searchBtn { width: 100%; margin: 0; }
+
+  /* Dashboard shortcuts (My Orders / View Cart / Messages / Notifications):
+     two per row */
+  .dash-shortcuts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 14px;
+  }
+  .dash-shortcuts .notification-btn,
+  .dash-shortcuts button,
+  .dashboard-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 56px;
+    margin: 0;
+    padding: 10px 8px;
+    border-radius: 10px;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .notification-badge {
+    position: static;
+    margin-left: 8px;
+    width: 26px;
+    height: 26px;
+    font-size: 14px;
+  }
+
+  button[onclick] { margin: 10px 14px; min-height: 48px; font-size: 17px; }
+
+  /* Products: one big readable card per row */
+  main { padding: 10px; }
+  /* Products: two per row, with text still easy to read */
+  .product-grid,
+  #productList,
+  #shopProductList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 10px;
+  }
+  .product-card { padding: 10px; font-size: 16px; }
+  .product-card h3 { font-size: 18px; margin: 8px 0 4px; overflow-wrap: anywhere; }
+  .product-img { width: 100%; height: 140px; max-height: none; }
+  .price { font-size: 18px; margin: 4px 0; }
+  .desc {
+    font-size: 15px;
+    line-height: 1.35;
+    margin: 4px 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .buyBtn,
+  .addCartBtn {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 6px;
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .buyBtn { margin-bottom: 0; }
+  .addCartBtn { margin-top: 8px; }
+
+  /* Cart */
+  .page-title { margin: 14px 16px; }
+  #cartItems,
+  #cartList { margin: 14px 12px; }
+  #cartItems > div { padding: 14px; gap: 12px; }
+  #cartItems img { width: 100%; max-width: 240px; height: 200px; }
+  #cartItems h3,
+  #cartItems p { margin: 8px auto; }
+  #cartItems button { min-height: 48px; padding: 10px 18px; font-size: 17px; }
+  #cartControls,
+  #cartTotalRow { margin-left: 16px !important; margin-right: 16px !important; }
+  #cartTotalRow { font-size: 20px; }
+  #checkoutBtn {
+    width: calc(100% - 28px);
+    margin: 20px 14px;
+    min-height: 54px;
+    font-size: 19px;
+    font-weight: 700;
+    box-sizing: border-box;
+  }
+
+  /* Checkout pop-ups have an inline 400px width -- shrink to the screen */
+  #checkoutModal { overflow-y: auto; }
+  #checkoutModal > div {
+    width: auto !important;
+    max-width: calc(100% - 24px);
+    margin: 20px auto !important;
+    box-sizing: border-box;
+  }
+  #payBtn,
+  #closeCheckout {
+    display: block;
+    width: 100%;
+    min-height: 52px;
+    margin-top: 10px;
+    font-size: 18px;
+    border-radius: 8px;
+  }
+
+  /* Product detail */
+  #productDetail { margin: 12px; padding: 16px; }
+  #detailImage { max-height: 300px; }
+  #detailName { font-size: 24px; }
+  #detailPrice { font-size: 22px; }
+  #detailQuantity { width: 90px; min-height: 48px; padding: 8px; }
+  #addToCartBtn,
+  #sendMessageBtn {
+    width: 100%;
+    min-height: 52px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .slider-btn { min-width: 48px; min-height: 48px; font-size: 20px; }
+  .colorChip,
+  .sizeChip { padding: 12px 20px; font-size: 17px; }
+
+  /* Orders, reviews, chat */
+  #orderList li { padding: 14px; font-size: 17px; }
+  .review-card { padding: 16px; }
+  .review-comment { font-size: 17px; }
+  .review-author { font-size: 15px; }
+  .reviews-section { margin: 20px 12px; padding: 10px; }
+  .chat-box { max-height: 300px; }
+  .main-wrapper { padding: 6px; }
+
+  .support-help { font-size: 16px !important; }
 }

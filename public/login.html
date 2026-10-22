@@ -6,6 +6,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/lesovia.css">
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Buy affordable electronics, fashion, and more on Lesovia. Trusted multi-vendor marketplace.">
   <title>Lesovia Login</title>
   <link rel="stylesheet" href="../css/login.css" />
@@ -96,6 +97,8 @@
           <div class="login-card">
   
               <h2>Login</h2>
+
+              <p id="loginNotice" role="status" style="display:none; margin:0 0 12px; padding:10px 12px; border:1px solid #CFE9D7; background:#E8F5EC; color:#086030; border-radius:8px; font-size:14px;"></p>
   
               <form id="loginForm">
   
@@ -126,6 +129,74 @@
                 class="btn-secondary">
                 Forgot Password?
             </button>
+
+            <button
+                id="phoneRecoveryToggle"
+                type="button"
+                class="btn-secondary">
+                Can't use your email? Reset your password with your phone
+            </button>
+
+            <div id="phoneRecoveryForm" style="display:none; margin-top:12px;">
+
+                <p style="font-size:14px;">
+                    If you added a recovery phone number to your seller account, we can text you a code
+                    so you can choose a new password. (This can't be used to sign in.)
+                </p>
+
+                <input
+                    id="phoneRecoveryEmail"
+                    type="email"
+                    autocomplete="email"
+                    placeholder="Email address on your account">
+
+                <input
+                    id="phoneRecoveryNumber"
+                    type="tel"
+                    inputmode="tel"
+                    autocomplete="tel"
+                    placeholder="Recovery phone number, e.g. (712) 555-0123">
+
+                <button id="phoneRecoverySendBtn" type="button" class="btn-primary">
+                    Text me a code
+                </button>
+
+                <div id="phoneRecoveryCodeRow" style="display:none; margin-top:10px;">
+                    <input
+                        id="phoneRecoveryCode"
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="one-time-code"
+                        maxlength="6"
+                        placeholder="6-digit code">
+
+                    <button id="phoneRecoveryVerifyBtn" type="button" class="btn-primary">
+                        Confirm code
+                    </button>
+                </div>
+
+                <div id="phoneRecoveryPasswordRow" style="display:none; margin-top:10px;">
+                    <input
+                        id="phoneRecoveryNewPassword"
+                        type="password"
+                        autocomplete="new-password"
+                        placeholder="New password (8+ characters)">
+
+                    <input
+                        id="phoneRecoveryConfirmPassword"
+                        type="password"
+                        autocomplete="new-password"
+                        placeholder="Confirm new password">
+
+                    <button id="phoneRecoverySetBtn" type="button" class="btn-primary">
+                        Set new password
+                    </button>
+                </div>
+
+                <p id="phoneRecoveryMessage" style="font-size:14px; min-height:1.2em;"></p>
+                <div id="phoneRecoveryRecaptcha"></div>
+
+            </div>
       <!--button
           id="resendVerificationBtn"
           class="btn-secondary">

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
+  <link rel="icon" type="image/svg+xml" href="../images/lesovia-mark.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="../images/lesovia-favicon-32.png">
+  <link rel="apple-touch-icon" href="../images/lesovia-touch-icon.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Returns &amp; Refunds - Lesovia</title>
+  <link rel="stylesheet" href="../css/seller dashboard.css" />
+  <style>
+    /* Hidden until app.js confirms the correct login/role -- see revealPage() */
+    body { visibility: hidden; }
+  </style>
+</head>
+<body>
+
+  <h1>Seller Dashboard</h1>
+  <nav>
+    <button id="logoutBtn" style="background-color: hwb(0 30% 8%); color: white; padding: 10px 20px; border: none; cursor: pointer;">Logout</button>
+  </nav>
+  <br>
+    <a href="seller dashboard.html" class="btn btn-secondary">Back</a>
+  <br><br>
+
+    <section id="stats-summary">
+      <h2>Returns &amp; Refunds</h2>
+      <p>Every return and cancellation on your orders. When a refund is sent, it comes out of your Stripe balance on single-seller orders, or is taken back from what Lesovia sent you on multi-seller orders.</p>
+      <div id="sellerReturnsList"><p>Loading...</p></div>
+    </section>
+
+    <p class="support-help" style="margin:24px 0;font-size:14px;color:#5b6b62;">Need help with an order, return, or refund? Email <a href="mailto:support@lesovia.com">support@lesovia.com</a> with your order number, or see our <a href="contact.html">Contact page</a>.</p>
+
+
+<script type="module" src="../js/app.js"></script>
+</body>
+</html>

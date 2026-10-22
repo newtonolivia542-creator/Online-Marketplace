@@ -288,6 +288,15 @@ async function moveMoney(stripe, ret, sellerOrder, plan, { skipReversal }) {
   return done;
 }
 
+// Stripe refuses to reverse a transfer when the seller's balance (already paid
+// out, or spent) can't cover it.
+function isInsufficientBalanceError(error) {
+  return Boolean(error) && (
+    error.code === "balance_insufficient" ||
+    /sufficient funds/i.test(String(error.message || ""))
+  );
+}
+
 // Runs the refund for a return, claiming it first so two people (or a retry and
 // the original) can't both send it.
 async function executeRefund(stripe, returnId, { from, actor, forceFull = false, skipReversal = false }) {
@@ -364,6 +373,20 @@ async function executeRefund(stripe, returnId, { from, actor, forceFull = false,
       link: adminLink(claimed),
     });
 
+    // The seller's own balance not covering the amount being taken back is
+    // something only they can explain or fix, so they're told too -- once per
+    // return, not again on every admin retry.
+    if (isInsufficientBalanceError(error) && !claimed.sellerNotifiedOfBalanceShortfall) {
+      await notify(claimed.sellerId, {
+        type: "refund_balance_short",
+        title: "Your balance can't cover a refund",
+        message: `Order ${claimed.orderNumber} is being refunded to the buyer, but your Stripe balance doesn't have enough funds to return ${dollars(plan.sellerReversalCents)}. Lesovia has been notified and will follow up with you.`,
+        link: sellerLink(claimed),
+      });
+
+      await db().collection("returns").doc(returnId).update({ sellerNotifiedOfBalanceShortfall: true });
+    }
+
     return { status: "refund_failed", error: String(error.message).slice(0, 300) };
   }
 }
@@ -432,7 +455,7 @@ async function finishRefund(ret, sellerOrder, plan, done, actor) {
   await notify(ret.sellerId, {
     type: "refund",
     title: isCancellation ? "Order cancelled" : "Return completed",
-    message: `Order ${ret.orderNumber} was ${isCancellation ? "cancelled" : "returned"} and ${dollars(plan.buyerRefundCents)} was refunded to the buyer.`,
+    message: `Order ${ret.orderNumber} was ${isCancellation ? "cancelled" : "returned"}. ${rm.sellerRefundSource({ chargeType: sellerOrder.chargeType, plan, reversedCents: (done && done.reversedCents) || 0 })}`,
     link: sellerLink(ret),
   });
 }
@@ -900,6 +923,15 @@ exports.cancelUnshippedOrder = endpoint(withStripe, async ({ user, body }) => {
     });
 
     tx.update(soRef, { activeReturnId: returnId, returnStatus: "queued" });
+  });
+
+  // Told before the refund runs (not only after it succeeds), so a seller who
+  // never shipped hears about it even if the refund then needs an admin.
+  await notify(sellerOrder.sellerId, {
+    type: "order_cancelled",
+    title: "Buyer cancelled an unshipped order",
+    message: `The buyer cancelled order ${sellerOrder.orderNumber} because it wasn't shipped after ${policy.cancelUnshippedAfterDays} days. The payment is being refunded to them.`,
+    link: sellerLink({ sellerOrderId }),
   });
 
   return executeRefund(stripe, returnId, { from: ["queued"], actor: user.uid });

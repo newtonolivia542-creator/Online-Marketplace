@@ -394,6 +394,32 @@ const ACTIVE_STATUSES = [
   "problem_reported", "refunding", "refund_failed",
 ];
 
+// One sentence telling a SELLER where the refund money came from, so "the buyer
+// was refunded" is never mistaken for "Lesovia paid it".
+//   direct charge -> it came out of the seller's own Stripe balance
+//   multi-seller  -> Lesovia refunded the buyer and took the seller's share back
+//                    (reversedCents = 0 when an admin chose to cover it instead)
+function sellerRefundSource({ chargeType, plan, reversedCents = 0 }) {
+  const money = (cents) => `$${((Number(cents) || 0) / 100).toFixed(2)}`;
+  const refund = money(plan.buyerRefundCents);
+
+  if (chargeType === "direct") {
+    const base = `${refund} was refunded to the buyer from your Stripe balance.`;
+
+    if (plan.mode === "full") {
+      return plan.commissionShareCents > 0
+        ? `${base} Lesovia returned its ${money(plan.commissionShareCents)} commission to you; Stripe's processing fee isn't returned.`
+        : `${base} Stripe's processing fee isn't returned.`;
+    }
+
+    return `${base} Lesovia's commission and Stripe's processing fee were kept out of the refund, so you're left even on this sale.`;
+  }
+
+  return reversedCents > 0
+    ? `Lesovia refunded the buyer ${refund} and took back the ${money(reversedCents)} it had sent you for this order.`
+    : `Lesovia refunded the buyer ${refund} from its own balance; nothing was taken back from you.`;
+}
+
 module.exports = {
   ReturnError,
   DAY_MS,
@@ -415,4 +441,5 @@ module.exports = {
   attributableStripeFee,
   chooseRefundMode,
   computeReturnPlan,
+  sellerRefundSource,
 };

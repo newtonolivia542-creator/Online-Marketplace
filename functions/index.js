@@ -2064,3 +2064,411 @@ exports.adminResolveReturn = returns.adminResolveReturn;
 exports.cancelUnshippedOrder = returns.cancelUnshippedOrder;
 exports.stampShipmentTimes = returns.stampShipmentTimes;
 exports.sweepReturnDeadlines = returns.sweepReturnDeadlines;
+
+// =================================
+// ACCOUNT RECOVERY BY PHONE
+// =================================
+// A seller can keep a phone number on file for ONE purpose: resetting their
+// password when they can't use their email. It is not a way to sign in.
+//
+// How that is kept true:
+//   * The number is NOT linked to the person's Firebase Auth account (a linked
+//     number would work as a login). It is verified with a texted code, then
+//     kept in a private server-only record, accountRecovery/{uid}.
+//   * The texted code is checked here, from the verified token Firebase issues
+//     for it, never from anything the browser merely claims.
+//   * Resetting a password signs out every existing session, and the account's
+//     email is told.
+//   * It can NOT change the account's email -- a stolen phone number must not
+//     be able to redirect every future alert. Email is changed from a signed-in
+//     session with the current password, confirmed through a link (below).
+const PHONE_E164 = /^\+[1-9]\d{7,14}$/;
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const sha = (value) => require("crypto").createHash("sha256").update(String(value)).digest("hex").slice(0, 32);
+
+// At most `max` hits per `windowSeconds` for a key. Counts every call, so
+// repeating a request never gets cheaper.
+async function hitRateLimit(key, max, windowSeconds) {
+  const ref = db.collection("emailRateLimits").doc(key);
+  const nowMs = Date.now();
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? snap.data() : {};
+    const fresh = !data.windowStartMs || nowMs - data.windowStartMs > windowSeconds * 1000;
+    const count = fresh ? 1 : (data.count || 0) + 1;
+
+    tx.set(ref, { count, windowStartMs: fresh ? nowMs : data.windowStartMs });
+
+    return count > max;
+  });
+}
+
+const callerOf = (req) => sha(String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "unknown");
+
+// The sensitive actions below need a sign-in from the last 15 minutes.
+const isRecentLogin = (decoded, seconds = 15 * 60) =>
+  Boolean(decoded.auth_time) && Date.now() / 1000 - decoded.auth_time < seconds;
+
+// Verifies the token Firebase issued for a texted code (sign-in with a phone
+// number on a throwaway session). Null if it isn't a fresh phone sign-in.
+async function verifiedPhoneToken(phoneIdToken, maxAgeSeconds = 5 * 60) {
+  if (typeof phoneIdToken !== "string" || !phoneIdToken) return null;
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(phoneIdToken);
+
+    const byPhone = decoded.firebase && decoded.firebase.sign_in_provider === "phone" && PHONE_E164.test(decoded.phone_number || "");
+    const fresh = decoded.auth_time && Date.now() / 1000 - decoded.auth_time < maxAgeSeconds;
+
+    return byPhone && fresh ? decoded : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Verifying a number creates an empty phone-only account in Firebase. Remove it
+// -- but only when it truly is empty: never an account with an email or a
+// Lesovia profile (that would be someone's real account).
+async function removeStrayPhoneUser(phoneUid, keepUid) {
+  if (!phoneUid || phoneUid === keepUid) return;
+
+  try {
+    const [record, profile] = await Promise.all([
+      admin.auth().getUser(phoneUid),
+      db.collection("users").doc(phoneUid).get(),
+    ]);
+
+    if (!record.email && !profile.exists) await admin.auth().deleteUser(phoneUid);
+  } catch (error) {
+    logger.error("Could not remove the temporary phone account:", error);
+  }
+}
+
+// Best effort: a mail problem never undoes or blocks the action itself.
+async function sendSecurityEmail(to, subject, bodyHtml) {
+  if (!to) return;
+
+  try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    await resend.emails.send({
+      from: "Lesovia <no-reply@lesovia.com>",
+      to,
+      subject,
+      html: brandedEmailShell(`
+        <h1 style="font-family:Georgia,'Times New Roman',serif;color:#14231B;margin-top:0;">${subject}</h1>
+        ${bodyHtml}
+        <p style="color:#5B6B62;">${new Date().toUTCString()}</p>
+        <p>If this wasn't you, email <a href="mailto:support@lesovia.com">support@lesovia.com</a> right away.</p>
+      `),
+    });
+  } catch (error) {
+    logger.error("Could not send a security email:", error);
+  }
+}
+
+const lastFourOf = (phone) => String(phone || "").replace(/\D/g, "").slice(-4);
+
+// ---- add / remove the recovery number (signed in, fresh login) ----
+exports.saveRecoveryPhone = onRequest(
+  { secrets: ["RESEND_API_KEY"], cors: true },
+
+  async (req, res) => {
+    try {
+      const decoded = await getDecodedTokenFromRequest(req);
+
+      if (!decoded) return res.status(401).send({ error: "Authentication required." });
+
+      if (!isRecentLogin(decoded)) {
+        return res.status(403).send({ error: "Please sign in again first.", code: "recent-login" });
+      }
+
+      const profile = await db.collection("users").doc(decoded.uid).get();
+
+      if (!profile.exists) return res.status(403).send({ error: "Account not found." });
+
+      const phoneToken = await verifiedPhoneToken(req.body && req.body.phoneIdToken);
+
+      if (!phoneToken) {
+        return res.status(400).send({ error: "That code has expired. Please request a new one." });
+      }
+
+      // A number that signs into some real account stays with that account.
+      if (phoneToken.uid !== decoded.uid) {
+        const [record, owner] = await Promise.all([
+          admin.auth().getUser(phoneToken.uid),
+          db.collection("users").doc(phoneToken.uid).get(),
+        ]);
+
+        if (record.email || owner.exists) {
+          return res.status(409).send({ error: "That phone number is already used by another account." });
+        }
+      }
+
+      const phone = phoneToken.phone_number;
+
+      await db.collection("accountRecovery").doc(decoded.uid).set(
+        { phone, addedAt: admin.firestore.FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+
+      await removeStrayPhoneUser(phoneToken.uid, decoded.uid);
+
+      const account = await admin.auth().getUser(decoded.uid);
+
+      await sendSecurityEmail(
+        account.email,
+        "A recovery phone number was added",
+        `<p>A recovery phone number ending in <strong>${lastFourOf(phone)}</strong> was added to your Lesovia account. It can be used to reset your password if you can't use your email. It can't be used to sign in.</p>`
+      );
+
+      res.send({ saved: true });
+    } catch (error) {
+      logger.error(error);
+      res.status(500).send({ error: "Could not save that number right now." });
+    }
+  }
+);
+
+exports.removeRecoveryPhone = onRequest(
+  { secrets: ["RESEND_API_KEY"], cors: true },
+
+  async (req, res) => {
+    try {
+      const decoded = await getDecodedTokenFromRequest(req);
+
+      if (!decoded) return res.status(401).send({ error: "Authentication required." });
+
+      if (!isRecentLogin(decoded)) {
+        return res.status(403).send({ error: "Please sign in again first.", code: "recent-login" });
+      }
+
+      const ref = db.collection("accountRecovery").doc(decoded.uid);
+      const existing = await ref.get();
+
+      if (existing.exists) {
+        const lastFour = lastFourOf(existing.data().phone);
+
+        await ref.delete();
+
+        const account = await admin.auth().getUser(decoded.uid);
+
+        await sendSecurityEmail(
+          account.email,
+          "Your recovery phone number was removed",
+          `<p>The recovery phone number ending in <strong>${lastFour}</strong> was removed from your Lesovia account.</p>`
+        );
+      }
+
+      res.send({ removed: true });
+    } catch (error) {
+      logger.error(error);
+      res.status(500).send({ error: "Could not remove that number right now." });
+    }
+  }
+);
+
+// ---- the recovery itself (signed out) ----
+
+// Looks up the account for an email and returns it only if it is active and has
+// exactly this recovery number on file.
+async function accountWithRecoveryPhone(email, phone) {
+  let account;
+
+  try {
+    account = await admin.auth().getUserByEmail(email);
+  } catch (error) {
+    if (error.code === "auth/user-not-found") return null;
+    throw error;
+  }
+
+  const [profile, recovery] = await Promise.all([
+    db.collection("users").doc(account.uid).get(),
+    db.collection("accountRecovery").doc(account.uid).get(),
+  ]);
+
+  if (!profile.exists || profile.data().status === "banned") return null;
+  if (!recovery.exists || recovery.data().phone !== phone) return null;
+
+  return { account, recovery };
+}
+
+// Step 1: is there an account with this email AND this recovery number? A code
+// is only ever texted when both match, so the page can't be used to text
+// strangers. Rate limited per caller, per email and per number.
+exports.checkRecoveryPhone = onRequest(
+  { cors: true },
+
+  async (req, res) => {
+    try {
+      const email = String((req.body && req.body.email) || "").trim().toLowerCase();
+      const phone = req.body && req.body.phone;
+
+      if (!EMAIL_SHAPE.test(email) || typeof phone !== "string" || !PHONE_E164.test(phone)) {
+        return res.status(400).send({ error: "Enter your account email and a valid phone number." });
+      }
+
+      const limited =
+        (await hitRateLimit(`recoveryIp_${callerOf(req)}`, 10, 10 * 60)) ||
+        (await hitRateLimit(`recoveryEmail_${sha(email)}`, 5, 60 * 60)) ||
+        (await hitRateLimit(`recoveryPhone_${sha(phone)}`, 5, 60 * 60));
+
+      if (limited) {
+        return res.status(429).send({ error: "Too many attempts. Please wait a while and try again." });
+      }
+
+      res.send({ match: Boolean(await accountWithRecoveryPhone(email, phone)) });
+    } catch (error) {
+      logger.error(error);
+      res.status(500).send({ error: "Could not check those details right now." });
+    }
+  }
+);
+
+// Step 2: the texted code was confirmed (the browser holds the token Firebase
+// issued for it) -- set the new password.
+exports.recoverPasswordWithPhone = onRequest(
+  { secrets: ["RESEND_API_KEY"], cors: true },
+
+  async (req, res) => {
+    try {
+      const email = String((req.body && req.body.email) || "").trim().toLowerCase();
+      const newPassword = req.body && req.body.newPassword;
+
+      if (!EMAIL_SHAPE.test(email) || typeof newPassword !== "string") {
+        return res.status(400).send({ error: "Something is missing. Please start again." });
+      }
+
+      if (newPassword.length < 8 || newPassword.length > 128) {
+        return res.status(400).send({ error: "Choose a password between 8 and 128 characters." });
+      }
+
+      const limited =
+        (await hitRateLimit(`recoverIp_${callerOf(req)}`, 10, 10 * 60)) ||
+        (await hitRateLimit(`recoverEmail_${sha(email)}`, 5, 60 * 60));
+
+      if (limited) {
+        return res.status(429).send({ error: "Too many attempts. Please wait a while and try again." });
+      }
+
+      const phoneToken = await verifiedPhoneToken(req.body.phoneIdToken);
+
+      if (!phoneToken) {
+        return res.status(400).send({ error: "That code has expired. Please start again." });
+      }
+
+      const found = await accountWithRecoveryPhone(email, phoneToken.phone_number);
+
+      if (!found) {
+        return res.status(400).send({ error: "Those details don't match a recovery phone on file." });
+      }
+
+      // One texted code can set one password. It can't be replayed.
+      if (phoneToken.auth_time <= (found.recovery.data().lastRecoveryAuthTime || 0)) {
+        return res.status(400).send({ error: "That code was already used. Please start again." });
+      }
+
+      const uid = found.account.uid;
+
+      await admin.auth().updateUser(uid, { password: newPassword });
+      await admin.auth().revokeRefreshTokens(uid); // signs out every existing session
+
+      await db.collection("accountRecovery").doc(uid).set({ lastRecoveryAuthTime: phoneToken.auth_time }, { merge: true });
+
+      await removeStrayPhoneUser(phoneToken.uid, uid);
+
+      await sendSecurityEmail(
+        found.account.email,
+        "Your password was changed",
+        `<p>The password on your Lesovia account was just changed using your recovery phone number (ending in <strong>${lastFourOf(phoneToken.phone_number)}</strong>). Everywhere you were signed in has been signed out.</p>`
+      );
+
+      res.send({ ok: true });
+    } catch (error) {
+      logger.error(error);
+      res.status(500).send({ error: "Could not reset the password right now." });
+    }
+  }
+);
+
+// ---- changing the email (signed in, current password re-entered) ----
+// The new address only takes effect when its owner clicks the confirmation
+// link, and the OLD address is told a change was asked for.
+exports.startEmailChange = onRequest(
+  { secrets: ["RESEND_API_KEY", "APP_URL"], cors: true },
+
+  async (req, res) => {
+    try {
+      const decoded = await getDecodedTokenFromRequest(req);
+
+      if (!decoded) return res.status(401).send({ error: "Authentication required." });
+
+      // The browser re-asks for the password first; this makes sure it did.
+      if (!isRecentLogin(decoded, 5 * 60)) {
+        return res.status(403).send({ error: "Please confirm your password again.", code: "recent-login" });
+      }
+
+      const newEmail = String((req.body && req.body.newEmail) || "").trim().toLowerCase();
+
+      if (!EMAIL_SHAPE.test(newEmail)) {
+        return res.status(400).send({ error: "Enter a valid email address." });
+      }
+
+      if (await hitRateLimit(`emailChange_${decoded.uid}`, 3, 60 * 60)) {
+        return res.status(429).send({ error: "Too many attempts. Please wait a while and try again." });
+      }
+
+      const account = await admin.auth().getUser(decoded.uid);
+
+      if (!account.email) return res.status(400).send({ error: "This account has no email to change." });
+
+      if (newEmail === String(account.email).toLowerCase()) {
+        return res.status(400).send({ error: "That is already your email address." });
+      }
+
+      try {
+        await admin.auth().getUserByEmail(newEmail);
+        return res.status(409).send({ error: "That email address is already used by another account." });
+      } catch (error) {
+        if (error.code !== "auth/user-not-found") throw error;
+      }
+
+      const link = await admin.auth().generateVerifyAndChangeEmailLink(account.email, newEmail, {
+        url: process.env.APP_URL,
+        handleCodeInApp: false,
+      });
+
+      const resend = new Resend(process.env.RESEND_API_KEY);
+
+      await resend.emails.send({
+        from: "Lesovia <no-reply@lesovia.com>",
+        to: newEmail,
+        subject: "Confirm your new Lesovia email address",
+        html: brandedEmailShell(`
+          <h1 style="font-family:Georgia,'Times New Roman',serif;color:#14231B;margin-top:0;">Confirm your new email</h1>
+          <p>Someone asked to use this address for a Lesovia account. If that was you, confirm it:</p>
+          <p style="margin:32px 0;text-align:center;">
+            <a href="${link}" style="background:#0B7A3D;color:#ffffff;padding:15px 30px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">Confirm new email</a>
+          </p>
+          <p style="word-break:break-all;color:#5B6B62;">${link}</p>
+          <p>If you didn't ask for this, ignore this email and nothing will change.</p>
+        `),
+      });
+
+      const [first, domain] = newEmail.split("@");
+
+      await sendSecurityEmail(
+        account.email,
+        "A change of email address was requested",
+        `<p>A request was made to change the email address on your Lesovia account to <strong>${first.slice(0, 1)}***@${domain}</strong>. Nothing changes until that new address confirms.</p>`
+      );
+
+      res.send({ sent: true });
+    } catch (error) {
+      logger.error(error);
+      res.status(500).send({ error: "Could not start the email change right now." });
+    }
+  }
+);

@@ -9,6 +9,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="../images/lesovia-favicon-32.png">
   <link rel="apple-touch-icon" href="../images/lesovia-touch-icon.png">
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Seller Dashboard | Lesovia</title>
 
   <meta name="description" content="Manage your store and listings on Lesovia.">
@@ -62,6 +63,72 @@
   <h2>Payouts</h2>
   <p id="stripeStatusText">Checking your payout setup&hellip;</p>
   <button id="connectStripeBtn" style="display:none;">Connect with Stripe</button>
+</div>
+
+<div class="profile-container" id="securityPhoneSection">
+  <h2 id="security">Security</h2>
+
+  <h3>Recovery phone number</h3>
+  <p>
+    Add a phone number so you can reset your password by text message if you ever can't use your email.
+    It can't be used to sign in. Only you can see it, and we'll email you whenever it's added, removed, or used.
+  </p>
+
+  <div id="securityLegacyPhone" style="display:none; padding:10px 12px; border:1px solid #f0d58a; background:#fff8e6; border-radius:8px;">
+    <p style="margin:0 0 8px;">
+      A phone number is linked to your account as a way to <strong>sign in</strong>. We no longer use phone numbers for that.
+      Remove it, then add it below as a recovery number.
+    </p>
+    <button id="securityLegacyRemoveBtn" type="button">Remove the old phone sign-in</button>
+    <p id="securityLegacyMessage" style="min-height:1.2em;"></p>
+  </div>
+
+  <div id="securityPhoneLinked" style="display:none;">
+    <p id="securityPhoneStatus"></p>
+    <button id="securityPhoneRemoveBtn" type="button">Remove recovery phone number</button>
+  </div>
+
+  <div id="securityPhoneAdd">
+    <input
+      type="tel"
+      id="securityPhoneNumber"
+      inputmode="tel"
+      autocomplete="tel"
+      placeholder="Phone number, e.g. (712) 555-0123"
+    />
+    <button id="securityPhoneSendBtn" type="button">Text me a code</button>
+
+    <div id="securityPhoneCodeRow" style="display:none;">
+      <input
+        type="text"
+        id="securityPhoneCode"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        maxlength="6"
+        placeholder="6-digit code"
+      />
+      <button id="securityPhoneConfirmBtn" type="button">Confirm number</button>
+    </div>
+
+    <p id="securityPhoneMessage" style="min-height:1.2em;"></p>
+  </div>
+  <div id="securityPhoneRecaptcha"></div>
+
+  <h3>Change password</h3>
+  <input type="password" id="securityNewPassword" autocomplete="new-password" placeholder="New password (8+ characters)" />
+  <input type="password" id="securityConfirmPassword" autocomplete="new-password" placeholder="Confirm new password" />
+  <button id="securityChangePasswordBtn" type="button">Change password</button>
+  <p id="securityPasswordMessage" style="min-height:1.2em;"></p>
+
+  <h3>Change email</h3>
+  <p>
+    We'll send a confirmation link to the new address. Your email only changes when you click it,
+    and your current address is told that a change was asked for.
+  </p>
+  <input type="email" id="securityNewEmail" autocomplete="email" placeholder="New email address" />
+  <input type="password" id="securityEmailPassword" autocomplete="current-password" placeholder="Your current password" />
+  <button id="securityChangeEmailBtn" type="button">Send confirmation link</button>
+  <p id="securityEmailMessage" style="min-height:1.2em;"></p>
 </div>
 
 <div class="profile-container">

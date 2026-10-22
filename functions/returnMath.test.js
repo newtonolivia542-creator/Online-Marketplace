@@ -266,3 +266,37 @@ test("PLAN: a refund never goes negative, and the fee withheld never exceeds wha
   assert.equal(plan.buyerRefundCents, 0);
   assert.equal(plan.stripeFeeWithheldCents, 90);   // capped at gross - commission
 });
+
+// ---------------- what the seller is told about where the money came from ----------------
+const { sellerRefundSource } = require("./returnMath");
+
+test("seller wording, direct charge, full refund (the cancelled-unshipped case): out of THEIR balance, commission handed back", () => {
+  const text = sellerRefundSource({
+    chargeType: "direct",
+    plan: { mode: "full", buyerRefundCents: 2991, commissionShareCents: 141 },
+  });
+  assert.equal(text, "$29.91 was refunded to the buyer from your Stripe balance. Lesovia returned its $1.41 commission to you; Stripe's processing fee isn't returned.");
+});
+
+test("seller wording, direct charge, standard return: fees were kept out of the refund so the seller is left even", () => {
+  const text = sellerRefundSource({ chargeType: "direct", plan: { mode: "standard", buyerRefundCents: 27950, commissionShareCents: 2100 } });
+  assert.match(text, /^\$279\.50 was refunded to the buyer from your Stripe balance\./);
+  assert.match(text, /commission and Stripe's processing fee were kept out of the refund, so you're left even/);
+});
+
+test("seller wording, multi-seller: Lesovia refunds and takes the seller's share back -- or says nothing was taken", () => {
+  const plan = { mode: "full", buyerRefundCents: 497, commissionShareCents: 50 };
+  assert.equal(
+    sellerRefundSource({ chargeType: "separate", plan, reversedCents: 447 }),
+    "Lesovia refunded the buyer $4.97 and took back the $4.47 it had sent you for this order."
+  );
+  assert.equal(
+    sellerRefundSource({ chargeType: "separate", plan, reversedCents: 0 }),
+    "Lesovia refunded the buyer $4.97 from its own balance; nothing was taken back from you."
+  );
+});
+
+test("seller wording: a full refund with no commission to give back doesn't mention one", () => {
+  const text = sellerRefundSource({ chargeType: "direct", plan: { mode: "full", buyerRefundCents: 100, commissionShareCents: 0 } });
+  assert.doesNotMatch(text, /commission/);
+});

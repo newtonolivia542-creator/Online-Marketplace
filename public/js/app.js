@@ -54,23 +54,6 @@ let aiGeneratedThisSession = false;
 const functions = getFunctions();
 //const storage = getStorage();
 
-// Several render functions build HTML with `innerHTML +=` and drop
-// user-supplied text straight in (this codebase does this already for
-// things like color/size). Anything typed by ONE user that gets displayed
-// to a DIFFERENT user -- a delivery address shown to the seller, for
-// example -- must go through this first, or a buyer could type something
-// like <img src=x onerror=...> as their name and have it execute in the
-// seller's browser.
-function escapeHtml(value) {
-  if (value === null || value === undefined) return "";
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 // When the browser restores a page from its back/forward cache (bfcache)
 // -- e.g. clicking Back after navigating to another page -- it resumes the
 // page exactly as frozen the moment you left, including any images or
@@ -276,8 +259,6 @@ const PAGE_ROLE = {
   "seller-history.html": "seller",
   "seller-notifications.html": "seller",
   "seller-reviews.html": "seller"
-  // admin.html isn't listed here -- it doesn't load app.js at all, only
-  // admin.js, which has its own equivalent guard (see admin.js).
 };
 
 function requiredRoleForPage(path) {

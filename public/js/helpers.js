@@ -226,3 +226,61 @@ export function planDateText(iso) {
 
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
 }
+
+
+// ---- promoted listings ----
+
+// A listing is promoted while its promotedUntil (set only by Cloud Functions,
+// after payment) is in the future.
+export function isPromotedProduct(product, nowMs = Date.now()) {
+  const until = timestampToDate(product && product.promotedUntil);
+
+  return !!until && until.getTime() > nowMs;
+}
+
+// What the seller's dashboard card should offer for one listing.
+//   promoted : currently running
+//   untilMs  : when it ends (0 if never promoted)
+//   canPromote: a Promote / Renew button makes sense (a live, in-stock listing
+//               that isn't promoted, or is in the last renewWindowDays)
+export function promotionState(product, nowMs = Date.now(), renewWindowDays = 7) {
+  const until = timestampToDate(product && product.promotedUntil);
+  const untilMs = until ? until.getTime() : 0;
+  const promoted = untilMs > nowMs;
+  const inStock = product.quantity === undefined || product.quantity === null || Number(product.quantity) > 0;
+  const live = product.hiddenByPlan !== true && inStock;
+
+  return {
+    promoted,
+    untilMs,
+    canPromote: live && (!promoted || untilMs - nowMs <= renewWindowDays * 86400000),
+  };
+}
+
+// Orders a list of listings for buyers: promoted ones are lifted into every 4th
+// spot (positions 1, 5, 9, ...), so promotion never fills more than about a
+// quarter of a page, and everything else keeps its order. `seed` rotates which
+// promoted listings get the spots when there are more than fit.
+export function arrangeListings(products, nowMs = Date.now(), seed = 0) {
+  const list = Array.isArray(products) ? products : [];
+  const promoted = list.filter((product) => isPromotedProduct(product, nowMs));
+
+  if (promoted.length === 0) return list;
+
+  const start = ((seed % promoted.length) + promoted.length) % promoted.length;
+  const rotated = [...promoted.slice(start), ...promoted.slice(0, start)];
+  const boosted = rotated.slice(0, Math.ceil(list.length / 4));
+  const boostedSet = new Set(boosted);
+  const rest = list.filter((product) => !boostedSet.has(product));
+
+  const out = [];
+  let nextBoosted = 0;
+  let nextRest = 0;
+
+  for (let i = 0; i < list.length; i++) {
+    if (i % 4 === 0 && nextBoosted < boosted.length) out.push(boosted[nextBoosted++]);
+    else out.push(rest[nextRest++]);
+  }
+
+  return out;
+}

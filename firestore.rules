@@ -279,6 +279,21 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    // Promoted listings: one record per promotion, the free ones used each month,
+    // and which "ending soon" reminders were sent. Cloud Functions only -- a
+    // promotion can't be granted, extended or read from the browser.
+    match /promotions/{id} {
+      allow read, write: if false;
+    }
+
+    match /promotionUsage/{id} {
+      allow read, write: if false;
+    }
+
+    match /promotionNotices/{id} {
+      allow read, write: if false;
+    }
+
     // Marks which "your free listings are changing" reminders were already
     // sent. Cloud Functions only.
     match /planNotices/{key} {

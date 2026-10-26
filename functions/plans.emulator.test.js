@@ -197,3 +197,109 @@ test("sold-out listings don't count against the limit", async () => {
 
   assert.equal((await visibleIds("s1")).length, 20); // 15 in stock + 5 sold-out (never hidden)
 });
+
+const fakeStripe = (subs) => ({ subscriptions: { list: async () => ({ data: subs }) } });
+const sub = (over = {}) => ({
+  id: "sub_1", customer: "cus_1", status: "active", created: 100, cancel_at_period_end: false,
+  current_period_end: 1900000000, metadata: { sellerId: "s1", plan: "plus" }, ...over,
+});
+
+test("sync: a paid subscription Stripe knows about is recorded even though no webhook arrived", async () => {
+  await wipe(); await seedSeller("s1", 20);
+  await db.collection("sellerPlans").doc("s1").set({ stripeCustomerId: "cus_1" });
+  await plans.reconcileSeller("s1", AFTER_FREE_YEAR); // 10 visible, 10 hidden
+
+  await plans.syncFromStripe(fakeStripe([sub()]), "s1");
+
+  const plan = (await db.collection("sellerPlans").doc("s1").get()).data();
+
+  assert.equal(plan.plan, "plus");
+  assert.equal(plan.status, "active");
+  assert.equal((await visibleIds("s1")).length, 20);
+});
+
+test("sync: picks the newest paid subscription, ignores ones that aren't this seller's", async () => {
+  await wipe(); await seedSeller("s1", 1);
+  await db.collection("sellerPlans").doc("s1").set({ stripeCustomerId: "cus_1" });
+
+  await plans.syncFromStripe(fakeStripe([
+    sub({ id: "sub_old", created: 100, metadata: { sellerId: "s1", plan: "plus" } }),
+    sub({ id: "sub_new", created: 200, metadata: { sellerId: "s1", plan: "pro" } }),
+    sub({ id: "sub_other", created: 300, metadata: { sellerId: "someone-else", plan: "unlimited" } }),
+    sub({ id: "sub_x", created: 400, metadata: {} }),
+  ]), "s1");
+
+  const plan = (await db.collection("sellerPlans").doc("s1").get()).data();
+
+  assert.equal(plan.plan, "pro");
+  assert.equal(plan.stripeSubscriptionId, "sub_new");
+});
+
+test("sync: a cancelled subscription puts the seller back on free", async () => {
+  await wipe(); await seedSeller("s1", 40);
+  await plans.handlePlanEvent(null, subEvent("customer.subscription.created", {}, 1000));
+  assert.equal((await visibleIds("s1")).length, 35);
+
+  await plans.syncFromStripe(fakeStripe([sub({ status: "canceled" })]), "s1");
+
+  assert.equal((await db.collection("sellerPlans").doc("s1").get()).data().status, "canceled");
+  assert.equal((await visibleIds("s1")).length, 15);
+});
+
+test("sync: nothing to do for a seller who never started checkout", async () => {
+  await wipe(); await seedSeller("s1", 3);
+
+  await plans.syncFromStripe(fakeStripe([sub()]), "s1");
+
+  assert.equal((await db.collection("sellerPlans").get()).size, 0);
+});
+
+test("a duplicate subscription being cancelled doesn't end the plan another one still provides", async () => {
+  await wipe(); await seedSeller("s1", 20);
+
+  await plans.handlePlanEvent(null, subEvent("customer.subscription.created", { id: "sub_keep" }, 1000));
+  await plans.handlePlanEvent(null, subEvent("customer.subscription.deleted", { id: "sub_duplicate", status: "canceled" }, 2000));
+
+  const plan = (await db.collection("sellerPlans").doc("s1").get()).data();
+
+  assert.equal(plan.status, "active");
+  assert.equal(plan.stripeSubscriptionId, "sub_keep");
+  assert.equal((await visibleIds("s1")).length, 20);
+
+  // ...but the one we're tracking ending does end it.
+  await plans.handlePlanEvent(null, subEvent("customer.subscription.deleted", { id: "sub_keep", status: "canceled" }, 3000));
+
+  assert.equal((await db.collection("sellerPlans").doc("s1").get()).data().status, "canceled");
+});
+
+test("sync: a subscription that is still renewing wins over a newer one that is cancelling", async () => {
+  await wipe(); await seedSeller("s1", 30);
+  await db.collection("sellerPlans").doc("s1").set({ stripeCustomerId: "cus_1", plan: "plus", status: "active", stripeSubscriptionId: "sub_cancelling" });
+
+  await plans.syncFromStripe(fakeStripe([
+    sub({ id: "sub_pro", created: 100, metadata: { sellerId: "s1", plan: "pro" } }),
+    sub({ id: "sub_cancelling", created: 300, cancel_at_period_end: true }),
+    sub({ id: "sub_cancelling2", created: 200, cancel_at_period_end: true }),
+  ]), "s1");
+
+  const plan = (await db.collection("sellerPlans").doc("s1").get()).data();
+
+  assert.equal(plan.plan, "pro");
+  assert.equal(plan.stripeSubscriptionId, "sub_pro");
+  assert.equal(plan.cancelAtPeriodEnd, false);
+});
+
+test("sync: if every live subscription is cancelling, the newest is the one tracked", async () => {
+  await wipe(); await seedSeller("s1", 3);
+  await db.collection("sellerPlans").doc("s1").set({ stripeCustomerId: "cus_1" });
+
+  await plans.syncFromStripe(fakeStripe([
+    sub({ id: "a", created: 100, cancel_at_period_end: true }),
+    sub({ id: "b", created: 200, cancel_at_period_end: true }),
+  ]), "s1");
+
+  const plan = (await db.collection("sellerPlans").doc("s1").get()).data();
+
+  assert.equal(plan.stripeSubscriptionId, "b");
+  assert.equal(plan.cancelAtPeriodEnd, true);
+});

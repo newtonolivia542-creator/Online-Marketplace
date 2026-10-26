@@ -76,3 +76,56 @@ test("seller plans: the plan page needs a seller; prices, limits and dates read 
   assert.equal(h.planDateText("2027-11-01T05:00:00.000Z"), "Nov 1, 2027", "Nov 1 in Central, not Oct 31");
   assert.equal(h.planDateText("nonsense"), "");
 });
+
+
+test("promoted listings: isPromotedProduct and promotionState", () => {
+  const NOW = Date.parse("2026-11-10T12:00:00Z");
+  const DAY = 86400000;
+  const until = (days) => new Date(NOW + days * DAY);
+
+  assert.equal(h.isPromotedProduct({ promotedUntil: until(3) }, NOW), true);
+  assert.equal(h.isPromotedProduct({ promotedUntil: until(-1) }, NOW), false);
+  assert.equal(h.isPromotedProduct({}, NOW), false);
+  assert.equal(h.isPromotedProduct({ promotedUntil: { seconds: (NOW + DAY) / 1000 } }, NOW), true, "a Firestore Timestamp shape");
+  assert.equal(h.isPromotedProduct(null, NOW), false);
+
+  assert.deepEqual(h.promotionState({ quantity: 3 }, NOW), { promoted: false, untilMs: 0, canPromote: true });
+  assert.equal(h.promotionState({ quantity: 3, promotedUntil: until(20) }, NOW).canPromote, false, "20 days left: too early to renew");
+  assert.equal(h.promotionState({ quantity: 3, promotedUntil: until(20) }, NOW).promoted, true);
+  assert.equal(h.promotionState({ quantity: 3, promotedUntil: until(7) }, NOW).canPromote, true, "renewable in the last 7 days");
+  assert.equal(h.promotionState({ quantity: 3, promotedUntil: until(-2) }, NOW).canPromote, true, "ended");
+  assert.equal(h.promotionState({ quantity: 0 }, NOW).canPromote, false, "sold out");
+  assert.equal(h.promotionState({ quantity: 3, hiddenByPlan: true }, NOW).canPromote, false, "hidden");
+});
+
+test("promoted listings: arrangeListings lifts at most one in four, keeps everything else in order", () => {
+  const NOW = Date.parse("2026-11-10T12:00:00Z");
+  const future = new Date(NOW + 86400000);
+  const item = (id, promoted = false) => ({ id, ...(promoted ? { promotedUntil: future } : {}) });
+  const ids = (list) => list.map((p) => p.id).join(" ");
+
+  // Nothing promoted: untouched (same array).
+  const plain = ["a", "b", "c", "d", "e"].map((id) => item(id));
+  assert.equal(h.arrangeListings(plain, NOW), plain);
+
+  // One promoted at the back goes to the top; the others keep their order.
+  const one = ["a", "b", "c", "d", "e", "f"].map((id) => item(id, id === "f"));
+  assert.equal(ids(h.arrangeListings(one, NOW)), "f a b c d e");
+
+  // 8 listings, 5 promoted: only ceil(8/4)=2 get the boosted spots (1st and 5th), the rest stay where they were.
+  const many = ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => item(id, ["b", "c", "e", "g", "h"].includes(id)));
+  const arranged = h.arrangeListings(many, NOW, 0);
+
+  assert.equal(arranged.length, 8);
+  assert.equal(new Set(arranged.map((p) => p.id)).size, 8, "nothing lost or duplicated");
+  assert.equal(arranged[0].id, "b");
+  assert.equal(arranged[4].id, "c");
+  assert.equal(ids(arranged.filter((_, i) => i % 4 !== 0)), "a d e f g h".split(" ").filter((id) => !["b", "c"].includes(id)).join(" ") || "", "non-boosted keep their relative order");
+
+  // The seed rotates which promoted listings win the spots.
+  assert.notEqual(h.arrangeListings(many, NOW, 0)[0].id, h.arrangeListings(many, NOW, 1)[0].id);
+
+  // Empty and bad input are safe.
+  assert.deepEqual(h.arrangeListings([], NOW), []);
+  assert.deepEqual(h.arrangeListings(null, NOW), []);
+});

@@ -761,3 +761,57 @@ label{
   .dash-sub { font-size: 15px; }
   #planCurrent button, #planListingsSection button { width: 100%; margin-top: 10px; }
 }
+
+/* "Save my choice" on the plan page: same green as the other primary buttons */
+#planSaveChoiceBtn {
+  background: var(--lv-green, #2f6f4f);
+  color: #fff;
+  font-weight: 700;
+  padding: 12px 22px;
+}
+#planSaveChoiceBtn:disabled { background: #9fb3a6; cursor: default; }
+
+.plan-sync { max-width: 900px; margin: 0 auto 10px; padding: 0 20px; color: #5b6b62; }
+.plan-sync button { margin-left: 8px; }
+@media (max-width: 700px) { .plan-sync { padding: 0 12px; } .plan-sync button { margin: 8px 0 0; width: 100%; } }
+
+
+/* ================= PROMOTED LISTINGS (seller dashboard) ================= */
+#sellerProducts .promo-row {
+  padding: 0;
+  box-shadow: none;
+  background: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.badge-promoted { background: #fff4d6; color: #8a5a00; border: 1px solid #f0d58a; }
+
+.promote-btn {
+  background: #fff;
+  color: var(--lv-green, #2f6f4f);
+  border: 2px solid var(--lv-green, #2f6f4f);
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.promo-notice {
+  max-width: 1200px;
+  margin: 12px auto;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #f3faf5;
+  border: 1px solid #cfe9d7;
+  box-sizing: border-box;
+}
+
+.promo-notice.plan-error { background: #fdf0ef; border-color: #f3c6c2; }
+
+@media (max-width: 700px) {
+  .promo-notice { margin: 12px; font-size: 17px; }
+  #sellerProducts .promo-row { flex-direction: column; align-items: stretch; }
+  #sellerProducts .promote-btn { width: 100%; min-height: 52px; font-size: 18px; }
+}

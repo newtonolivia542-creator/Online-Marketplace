@@ -529,3 +529,30 @@ test("products: a seller can edit their listing but not hiddenByPlan / promotedU
   denied(await as("seller1").update("products/p1", { price: 7, hiddenByPlan: false }), "smuggled");
   denied(await as("seller2").update("products/p1", { price: 1 }), "someone else's");
 });
+
+
+// ------------------------------------------------------------- promotions
+test("promotions: records, free-promotion usage and reminders are server-only", async () => {
+  await reset(); await seedPeople();
+  await seed("promotions/cs_test_1", { sellerId: "seller1", productId: "p1" });
+  await seed("promotionUsage/seller1_2026-11", { used: 1 });
+  await seed("promotionNotices/p1_123", { sentAt: new Date() });
+
+  for (const path of ["promotions/cs_test_1", "promotionUsage/seller1_2026-11", "promotionNotices/p1_123"]) {
+    for (const uid of ["seller1", "seller2", "admin1"]) {
+      denied(await as(uid).get(path), `${uid} get ${path}`);
+      denied(await as(uid).update(path, { used: 0 }), `${uid} update ${path}`);
+      denied(await as(uid).delete(path), `${uid} delete ${path}`);
+    }
+    denied(await as("seller1").create(path.split("/")[0] + "/new", { used: 0 }), `create in ${path}`);
+  }
+});
+
+test("products: a seller can't give their own listing a promotion", async () => {
+  await reset(); await seedPeople();
+  await seed("products/p1", { sellerId: "seller1", name: "Mug", price: 5, quantity: 3 });
+
+  denied(await as("seller1").update("products/p1", { promotedUntil: new Date("2099-01-01") }), "promote own listing");
+  denied(await as("seller1").update("products/p1", { price: 6, promotedUntil: new Date("2099-01-01") }), "smuggled in an edit");
+  ok(await as("seller1").update("products/p1", { price: 6 }));
+});

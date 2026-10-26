@@ -54,7 +54,11 @@ import {
   disputeLineHtml,
   payoutLine,
   requiredRoleForPage,
-  homeForRole
+  homeForRole,
+  isPromotedProduct,
+  promotionState,
+  arrangeListings,
+  planDateText
 } from "./helpers.js";
 
 // Phone-number sign-in / recovery (login page + seller profile). Wires itself
@@ -64,6 +68,10 @@ import "./phoneAuth.js";
 // Seller plans: the plan page, the dashboard usage line, and the check that
 // runs before a new listing is uploaded.
 import { loadPlanPage, loadPlanSummary, sellerHasRoomForListing } from "./plans.js";
+
+// Paying to promote a listing: the Promote buttons on the seller dashboard and
+// the return from Stripe checkout.
+import "./promotions.js";
 
 import {
   buyerReturnHtml,
@@ -1214,6 +1222,9 @@ function displayProducts(products) {
     return;
   }
 
+  // Paid promotions are lifted into every 4th spot, rotating hourly.
+  products = arrangeListings(products, Date.now(), Math.floor(Date.now() / 3600000));
+
   products.forEach(product => {
 
     const card = document.createElement("div");
@@ -1221,6 +1232,7 @@ function displayProducts(products) {
     card.classList.add("product-card");
 
     card.innerHTML = `
+      ${isPromotedProduct(product) ? '<span class="listing-promo-label">Sponsored</span>' : ""}
       <img
         src="${product.images ? product.images[0] : product.imageURL}"
         class="product-img"
@@ -2322,6 +2334,16 @@ function loadSellerProducts() {
       <span>$${product.price}</span>
 
       ${product.hiddenByPlan === true ? '<p><span class="badge badge-danger">🔒 Hidden from buyers: over your plan limit</span> <a href="seller-plan.html">Choose what stays live</a></p>' : ""}
+      ${(() => {
+        const promo = promotionState(product);
+
+        if (!promo.promoted && !promo.canPromote) return "";
+
+        return `<div class="promo-row">
+          ${promo.promoted ? `<span class="badge badge-promoted">⭐ Promoted until ${planDateText(new Date(promo.untilMs).toISOString())}</span>` : ""}
+          ${promo.canPromote ? `<button type="button" class="promote-btn" data-promote="${docSnap.id}" data-name="${String(product.name || "").replace(/"/g, "&quot;")}">${promo.promoted ? "Renew promotion" : "⭐ Promote this listing"}</button>` : ""}
+        </div>`;
+      })()}
       <p><span class="badge ${stockBadgeClass}">${stockBadgeText}</span></p>
       <p class="seller-product-stats">📦 ${totalUploaded} uploaded &nbsp;|&nbsp; 🛒 ${totalSold} sold</p>
 

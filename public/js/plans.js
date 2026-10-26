@@ -11,7 +11,7 @@ import { escapeHtml, planPrice, listingLimitText, planDateText } from "./helpers
 
 const FUNCTIONS_BASE = "https://us-central1-online-marketplace-e99cd.cloudfunctions.net/";
 
-async function plansApi(name, body = {}) {
+export async function plansApi(name, body = {}) {
   const user = auth.currentUser;
 
   if (!user) throw new Error("Please sign in first.");
@@ -210,8 +210,11 @@ export async function loadPlanPage() {
   const params = new URLSearchParams(window.location.search);
 
   if (params.get("checkout") === "success") {
-    document.getElementById("planPageMessage").textContent = "Thank you! Your plan is being activated. This can take a few seconds.";
+    document.getElementById("planPageMessage").textContent = "Thank you! Activating your plan...";
     document.getElementById("planPageMessage").className = "plan-ok";
+
+    // Ask Stripe directly instead of waiting for its message to reach us.
+    try { await plansApi("syncPlan"); } catch (err) { /* the polling below still has a go */ }
   } else if (params.get("checkout") === "cancelled") {
     document.getElementById("planPageMessage").textContent = "Checkout was cancelled. You haven't been charged.";
   }
@@ -225,6 +228,14 @@ export async function loadPlanPage() {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         await refreshPlanPage();
       }
+    }
+
+    if (params.get("checkout") === "success") {
+      const note = document.getElementById("planPageMessage");
+
+      note.textContent = planState.plan === "free"
+        ? "Your payment went through, but your plan hasn't shown up yet. Tap \"Refresh my plan\" below in a moment."
+        : "Thank you! Your plan is active.";
     }
   } catch (err) {
     document.getElementById("planCurrent").innerHTML = `<p class="plan-error">${escapeHtml(err.message)}</p>`;
@@ -265,6 +276,12 @@ export async function loadPlanPage() {
         const { url } = await plansApi("planBillingPortal");
 
         window.location.href = url;
+      });
+    } else if (button.id === "planSyncBtn") {
+      await withButton(button, async () => {
+        await plansApi("syncPlan");
+        await refreshPlanPage();
+        showMessage("Your plan is up to date.");
       });
     } else if (button.id === "planSaveChoiceBtn") {
       const ids = [...document.querySelectorAll("#planListings input:checked")].map((box) => box.value);

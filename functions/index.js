@@ -1363,6 +1363,10 @@ async function handleStripeEvent(stripe, event) {
     case "invoice.payment_failed":
       return plans.handlePlanEvent(stripe, event);
 
+    // A seller paid for a promoted listing.
+    case "checkout.session.completed":
+      return promotions.handleCheckoutCompleted(stripe, event);
+
     // Every other event type is acknowledged and logged (below) with no
     // handler, so Stripe doesn't redeliver it forever.
     default:
@@ -2068,6 +2072,7 @@ exports.sendNotificationEmail = onDocumentCreated(
 // returns.js (rules and money math in returnMath.js).
 const returns = require("./returns");
 const plans = require("./plans");
+const promotions = require("./promotions");
 
 exports.previewReturn = returns.previewReturn;
 exports.requestReturn = returns.requestReturn;
@@ -2091,9 +2096,21 @@ exports.getPlanStatus = plans.status;
 exports.choosePlan = plans.choosePlan;
 exports.setPlanCancel = plans.setCancel;
 exports.planBillingPortal = plans.billingPortal;
+exports.syncPlan = plans.syncPlan;
 exports.chooseLiveListings = plans.chooseLive;
 exports.reconcileOnProductWrite = plans.reconcileOnProductWrite;
 exports.sweepListingLimits = plans.sweepListingLimits;
+
+// =================================
+// PROMOTED LISTINGS
+// =================================
+// Rules in promoMath.js, payment and activation in promotions.js. A paid
+// promotion is applied from checkout.session.completed (handleStripeEvent
+// above) and, as a safety net, when the seller returns from checkout.
+exports.promotionStatus = promotions.promotionStatus;
+exports.promoteListing = promotions.promoteListing;
+exports.syncPromotion = promotions.syncPromotion;
+exports.sweepPromotionReminders = promotions.sweepPromotionReminders;
 
 // =================================
 // ACCOUNT RECOVERY BY PHONE

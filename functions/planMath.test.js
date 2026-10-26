@@ -17,6 +17,8 @@ test("config: defaults, and bad fields fall back one at a time", () => {
   assert.equal(cfg.tiers.plus.maxItems, 35);
   assert.equal(cfg.tiers.plus.priceCents, 2000);
   assert.equal(cfg.tiers.unlimited.maxItems, null);
+  assert.equal(cfg.tiers.unlimited.priceCents, 5000);
+  assert.equal(cfg.tiers.pro.priceCents, 3500);
 
   const odd = pm.resolveConfig({ freeLimitAfter: "ten", freeLimitDuringFreeYear: 20, freeYearEndsAt: "not a date", tiers: { pro: { priceCents: 4000, maxItems: -1 } } });
 

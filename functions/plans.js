@@ -261,12 +261,15 @@ const choosePlan = endpoint(withStripe, async ({ user, body }) => {
   if (hasLiveSubscription(planDoc)) {
     const sub = await stripe.subscriptions.retrieve(planDoc.stripeSubscriptionId);
 
-    await stripe.subscriptions.update(sub.id, {
+    const updated = await stripe.subscriptions.update(sub.id, {
       items: [{ id: sub.items.data[0].id, price_data: priceData }],
       proration_behavior: "create_prorations",
       cancel_at_period_end: false,
       metadata: { sellerId: user.uid, plan },
     });
+
+    // Record the switch now rather than waiting for Stripe's webhook to say so.
+    await applySubscription(updated, Math.floor(Date.now() / 1000));
 
     return { updated: true };
   }
@@ -359,7 +362,13 @@ async function handlePlanEvent(stripe, event) {
 
   if (event.type === "invoice.payment_failed") return handlePaymentFailed(event);
 
-  const sub = event.data.object;
+  await applySubscription(event.data.object, event.created, event.type === "customer.subscription.deleted");
+}
+
+// Writes a Stripe subscription into sellerPlans/{uid}, tells the seller if their
+// plan changed, and brings their listings in line. Shared by the webhook and by
+// syncFromStripe, so both end in exactly the same state.
+async function applySubscription(sub, eventCreated, deleted = false) {
   const uid = sub.metadata && sub.metadata.sellerId;
   const plan = sub.metadata && sub.metadata.plan;
 
@@ -369,9 +378,13 @@ async function handlePlanEvent(stripe, event) {
   const before = (await ref.get()).data() || {};
 
   // Stripe doesn't promise event order; never let an older event overwrite a newer one.
-  if (before.lastEventCreated && event.created < before.lastEventCreated) return;
+  if (before.lastEventCreated && eventCreated < before.lastEventCreated) return;
 
-  const ended = event.type === "customer.subscription.deleted" || sub.status === "canceled";
+  const ended = deleted || sub.status === "canceled";
+
+  // A second subscription for the same seller (a double checkout, say) ending
+  // must not end the plan another subscription still provides.
+  if (ended && before.stripeSubscriptionId && before.stripeSubscriptionId !== sub.id && pm.PAID_STATUSES.has(before.status)) return;
 
   await ref.set(
     {
@@ -381,7 +394,7 @@ async function handlePlanEvent(stripe, event) {
       stripeSubscriptionId: sub.id,
       currentPeriodEnd: periodEndOf(sub),
       cancelAtPeriodEnd: sub.cancel_at_period_end === true,
-      lastEventCreated: event.created,
+      lastEventCreated: eventCreated,
       updatedAt: serverTime(),
     },
     { merge: true }
@@ -405,6 +418,38 @@ async function handlePlanEvent(stripe, event) {
 
   await reconcileSeller(uid);
 }
+
+// Asks Stripe directly what this seller's subscription is, and records it. The
+// webhook normally does this the moment a seller pays; this is the safety net
+// for when it can't (a webhook that isn't set up, an outage), and it runs when a
+// seller lands back from checkout. Only subscriptions that carry this seller's
+// id in their metadata count.
+async function syncFromStripe(stripe, uid) {
+  const planDoc = await loadPlanDoc(uid);
+
+  if (!planDoc || !planDoc.stripeCustomerId) return;
+
+  const list = await stripe.subscriptions.list({ customer: planDoc.stripeCustomerId, status: "all", limit: 20 });
+
+  const ours = list.data.filter((sub) => sub.metadata && sub.metadata.sellerId === uid && pm.PLAN_ORDER.includes(sub.metadata.plan));
+
+  // Among the live ones, prefer a subscription that isn't set to cancel (a seller
+  // who cancelled duplicates is still paying for the one they kept), then the newest.
+  const paid = ours
+    .filter((sub) => pm.PAID_STATUSES.has(sub.status))
+    .sort((a, b) => (a.cancel_at_period_end ? 1 : 0) - (b.cancel_at_period_end ? 1 : 0) || b.created - a.created);
+  const chosen = paid[0] || ours.sort((a, b) => b.created - a.created)[0];
+
+  if (chosen) await applySubscription(chosen, Math.floor(Date.now() / 1000));
+}
+
+const syncPlan = endpoint(withStripe, async ({ user }) => {
+  await syncFromStripe(stripeClient(), user.uid);
+
+  const planDoc = await loadPlanDoc(user.uid);
+
+  return { plan: pm.effectivePlan(planDoc) };
+});
 
 async function handlePaymentFailed(event) {
   const invoice = event.data.object;
@@ -482,6 +527,13 @@ async function sendHeadsUp(uid, cfg, nowMs, days) {
 
 module.exports = {
   PlanError,
+  // shared with promotions.js
+  endpoint,
+  notify,
+  loadPlanDoc,
+  stripeClient,
+  withStripe,
+  originOf,
   reconcileSeller,
   reconcileOnProductWrite,
   status,
@@ -490,5 +542,7 @@ module.exports = {
   billingPortal,
   chooseLive,
   handlePlanEvent,
+  syncFromStripe,
+  syncPlan,
   sweepListingLimits,
 };

@@ -20,7 +20,7 @@ const DEFAULTS = {
   tiers: {
     plus: { name: "Plus", maxItems: 35, priceCents: 2000 },
     pro: { name: "Pro", maxItems: 50, priceCents: 3500 },
-    unlimited: { name: "Unlimited", maxItems: null, priceCents: 7500 },
+    unlimited: { name: "Unlimited", maxItems: null, priceCents: 5000 },
   },
 };
 

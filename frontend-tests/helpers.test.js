@@ -61,3 +61,18 @@ test("page access: every seller page needs a seller, every buyer page a buyer, l
   assert.equal(h.homeForRole("admin"), "admin.html");
   assert.equal(h.homeForRole("buyer"), "buyer dashboard.html");
 });
+
+test("seller plans: the plan page needs a seller; prices, limits and dates read plainly", () => {
+  assert.equal(h.requiredRoleForPage("/seller-plan.html"), "seller");
+
+  assert.equal(h.planPrice(2000), "$20");
+  assert.equal(h.planPrice(3500), "$35");
+  assert.equal(h.planPrice(1999), "$19.99");
+
+  assert.equal(h.listingLimitText(15), "15 live listings");
+  assert.equal(h.listingLimitText(1), "1 live listing");
+  assert.equal(h.listingLimitText(null), "Unlimited listings");
+
+  assert.equal(h.planDateText("2027-11-01T05:00:00.000Z"), "Nov 1, 2027", "Nov 1 in Central, not Oct 31");
+  assert.equal(h.planDateText("nonsense"), "");
+});

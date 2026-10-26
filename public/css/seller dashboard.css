@@ -677,3 +677,87 @@ label{
   }
   body > a.btn { margin-left: 12px; }
 }
+
+
+/* ================= SELLER PLAN PAGE ================= */
+.plan-page {
+  max-width: 900px;
+  margin: 0 auto 20px;
+  padding: 0 20px;
+  display: grid;
+  gap: 20px;
+}
+
+.dash-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #5b6b62;
+}
+
+.plan-usage-text { font-size: 18px; font-weight: 600; margin: 4px 0 10px; }
+
+.plan-bar {
+  height: 14px;
+  background: #e6ece8;
+  border-radius: 7px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.plan-bar-fill { height: 100%; background: var(--lv-green, #2f6f4f); border-radius: 7px; }
+.plan-bar-fill.full { background: #d97706; }
+
+.plan-warning {
+  padding: 10px 12px;
+  border: 1px solid #f0d58a;
+  background: #fff8e6;
+  border-radius: 8px;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.plan-card {
+  border: 2px solid var(--lv-line, #ddd);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.plan-card.current { border-color: var(--lv-green, #2f6f4f); background: #f3faf5; }
+.plan-card h3 { margin: 0 0 6px; }
+.plan-price { font-size: 30px; font-weight: 700; margin: 4px 0; }
+.plan-price span { font-size: 16px; font-weight: 500; color: #5b6b62; }
+.plan-card button { width: 100%; background: var(--lv-green, #2f6f4f); color: #fff; }
+.plan-card button:disabled { background: #9fb3a6; cursor: default; }
+
+.plan-listing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 6px;
+  border-bottom: 1px solid #eef2ef;
+  font-weight: 500;
+}
+
+.plan-listing input { width: auto; margin: 0; }
+.plan-hidden-tag { color: #b42318; font-size: 13px; }
+.plan-chosen { font-weight: 600; }
+.plan-chosen.over { color: #b42318; }
+.plan-ok { color: #086030; }
+.plan-error { color: #b42318; }
+
+@media (max-width: 700px) {
+  .plan-page { padding: 0 12px; }
+  .plan-grid { grid-template-columns: 1fr; }
+  .plan-price { font-size: 34px; }
+  .plan-listing { padding: 14px 4px; font-size: 17px; }
+  .plan-listing input { width: 26px; height: 26px; min-height: 0; flex: none; }
+  .dash-sub { font-size: 15px; }
+  #planCurrent button, #planListingsSection button { width: 100%; margin-top: 10px; }
+}

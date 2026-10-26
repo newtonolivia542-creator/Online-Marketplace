@@ -113,13 +113,20 @@ service cloud.firestore {
     match /products/{productId} {
       allow read: if true;
 
+      // hiddenByPlan (hidden because the seller is over their plan's live-listing
+      // limit) and promotedUntil (a paid promotion) are written only by Cloud
+      // Functions. A seller can't create a listing already flagged, or edit
+      // either field, so the limit and paid placement can't be skipped from the
+      // browser.
       allow create: if isSignedIn()
         && request.resource.data.sellerId == request.auth.uid
+        && !request.resource.data.keys().hasAny(['hiddenByPlan', 'promotedUntil'])
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "seller";
 
       allow update: if isSignedIn()
         && resource.data.sellerId == request.auth.uid
-        && request.resource.data.sellerId == resource.data.sellerId;
+        && request.resource.data.sellerId == resource.data.sellerId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['hiddenByPlan', 'promotedUntil']);
 
       allow delete: if isSignedIn()
         && (resource.data.sellerId == request.auth.uid || isAdmin());
@@ -262,7 +269,24 @@ service cloud.firestore {
     }
 
     // =========================
-    // PUBLIC CONFIG (return policy numbers)
+    // SELLER PLANS (subscription state)
+    // =========================
+    // Written only by Cloud Functions from Stripe's webhooks. A seller can read
+    // their own plan (so the plan page can show it) but nobody can write it or
+    // list everyone's -- a plan can't be granted from the browser.
+    match /sellerPlans/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // Marks which "your free listings are changing" reminders were already
+    // sent. Cloud Functions only.
+    match /planNotices/{key} {
+      allow read, write: if false;
+    }
+
+    // =========================
+    // PUBLIC CONFIG (return policy numbers, plan prices and limits)
     // =========================
     // publicConfig/returnPolicy holds the return/cancellation policy numbers
     // (return window, days to ship a return back, ...). Anyone may read it so

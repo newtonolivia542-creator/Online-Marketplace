@@ -342,6 +342,12 @@ exports.createPaymentIntent = onRequest(
         }
 
         const product = productSnap.data();
+
+        // Over the seller's plan limit: hidden from buyers, so not for sale either.
+        if (product.hiddenByPlan === true) {
+          throw new CheckoutError(`"${product.name}" is no longer available.`);
+        }
+
         const availableQuantity = product.quantity ?? 0;
 
         if (availableQuantity < quantity) {
@@ -1350,6 +1356,13 @@ async function handleStripeEvent(stripe, event) {
     case "payout.failed":
       return handlePayoutFailed(event);
 
+    // Seller plan subscriptions (billed on Lesovia's own account).
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+    case "customer.subscription.deleted":
+    case "invoice.payment_failed":
+      return plans.handlePlanEvent(stripe, event);
+
     // Every other event type is acknowledged and logged (below) with no
     // handler, so Stripe doesn't redeliver it forever.
     default:
@@ -1608,6 +1621,9 @@ Return ONLY valid JSON. No explanations, no markdown.
 
       snapshot.forEach((doc) => {
         const product = doc.data();
+
+        // Hidden by the seller's plan limit: not for sale.
+        if (product.hiddenByPlan === true) return;
 
         // Hard filters -- only applied when the model was confident enough
         // to name an exact known category or a price bound.
@@ -2051,6 +2067,7 @@ exports.sendNotificationEmail = onDocumentCreated(
 // Endpoints, the refund itself and the daily deadline sweep live in
 // returns.js (rules and money math in returnMath.js).
 const returns = require("./returns");
+const plans = require("./plans");
 
 exports.previewReturn = returns.previewReturn;
 exports.requestReturn = returns.requestReturn;
@@ -2064,6 +2081,19 @@ exports.adminResolveReturn = returns.adminResolveReturn;
 exports.cancelUnshippedOrder = returns.cancelUnshippedOrder;
 exports.stampShipmentTimes = returns.stampShipmentTimes;
 exports.sweepReturnDeadlines = returns.sweepReturnDeadlines;
+
+// =================================
+// SELLER PLANS (live-listing limit + subscriptions)
+// =================================
+// Rules in planMath.js, Firestore/Stripe work in plans.js. The Stripe
+// subscription events reach it through handleStripeEvent above.
+exports.getPlanStatus = plans.status;
+exports.choosePlan = plans.choosePlan;
+exports.setPlanCancel = plans.setCancel;
+exports.planBillingPortal = plans.billingPortal;
+exports.chooseLiveListings = plans.chooseLive;
+exports.reconcileOnProductWrite = plans.reconcileOnProductWrite;
+exports.sweepListingLimits = plans.sweepListingLimits;
 
 // =================================
 // ACCOUNT RECOVERY BY PHONE

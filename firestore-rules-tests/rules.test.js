@@ -478,3 +478,54 @@ test("accountRecovery: only the owner can read their own record; nobody can list
     denied(await as(uid).delete("accountRecovery/seller1"), `${uid} delete`);
   }
 });
+
+
+// ------------------------------------------------------------- sellerPlans
+test("sellerPlans: only the owner can read their plan; nobody can write or list", async () => {
+  await reset(); await seedPeople();
+  await seed("sellerPlans/seller1", { plan: "pro", status: "active" });
+
+  ok(await as("seller1").get("sellerPlans/seller1"));
+  denied(await as("seller2").get("sellerPlans/seller1"));
+  denied(await as("buyer1").get("sellerPlans/seller1"));
+  denied(await as("admin1").get("sellerPlans/seller1"));
+  denied(await as(null).get("sellerPlans/seller1"));
+  denied(await as("seller1").listAll("sellerPlans"));
+
+  for (const uid of ["seller1", "seller2", "admin1"]) {
+    denied(await as(uid).update("sellerPlans/seller1", { plan: "unlimited" }), `${uid} update`);
+    denied(await as(uid).create("sellerPlans/new", { plan: "unlimited", status: "active" }), `${uid} create`);
+    denied(await as(uid).delete("sellerPlans/seller1"), `${uid} delete`);
+  }
+});
+
+test("planNotices: nobody on a client can touch them", async () => {
+  await reset(); await seedPeople();
+  await seed("planNotices/seller1_60", { sentAt: new Date() });
+
+  for (const uid of ["seller1", "admin1"]) {
+    denied(await as(uid).get("planNotices/seller1_60"), `${uid} get`);
+    denied(await as(uid).create("planNotices/x", { a: 1 }), `${uid} create`);
+  }
+});
+
+// ------------------------------------------------- products: plan limit flags
+test("products: a seller can't create a listing that is pre-flagged, or promoted", async () => {
+  await reset(); await seedPeople();
+
+  ok(await as("seller1").create("products/ok1", { sellerId: "seller1", name: "Mug", price: 5, quantity: 3 }));
+  denied(await as("seller1").create("products/bad1", { sellerId: "seller1", name: "Mug", hiddenByPlan: false }));
+  denied(await as("seller1").create("products/bad2", { sellerId: "seller1", name: "Mug", promotedUntil: new Date("2099-01-01") }));
+  denied(await as("seller2").create("products/bad3", { sellerId: "seller1", name: "Mug" })); // not their own
+});
+
+test("products: a seller can edit their listing but not hiddenByPlan / promotedUntil", async () => {
+  await reset(); await seedPeople();
+  await seed("products/p1", { sellerId: "seller1", name: "Mug", price: 5, quantity: 3, hiddenByPlan: true });
+
+  ok(await as("seller1").update("products/p1", { price: 6, quantity: 9 }));
+  denied(await as("seller1").update("products/p1", { hiddenByPlan: false }), "unhide");
+  denied(await as("seller1").update("products/p1", { promotedUntil: new Date("2099-01-01") }), "promote");
+  denied(await as("seller1").update("products/p1", { price: 7, hiddenByPlan: false }), "smuggled");
+  denied(await as("seller2").update("products/p1", { price: 1 }), "someone else's");
+});

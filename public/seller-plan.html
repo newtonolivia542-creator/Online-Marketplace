@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
+  <link rel="icon" type="image/svg+xml" href="../images/lesovia-mark.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="../images/lesovia-favicon-32.png">
+  <link rel="apple-touch-icon" href="../images/lesovia-touch-icon.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Plan - Lesovia</title>
+  <link rel="stylesheet" href="../css/seller dashboard.css" />
+  <style>
+    /* Hidden until app.js confirms the correct login/role -- see revealPage() */
+    body { visibility: hidden; }
+  </style>
+</head>
+<body>
+
+  <h1>Seller Dashboard</h1>
+  <nav>
+    <button id="logoutBtn" style="background-color: hwb(0 30% 8%); color: white; padding: 10px 20px; border: none; cursor: pointer;">Logout</button>
+  </nav>
+  <br>
+    <a href="seller dashboard.html" class="btn btn-secondary">Back</a>
+  <br><br>
+
+  <div id="planPage" class="plan-page">
+
+    <section>
+      <h2>My Plan</h2>
+      <p id="planPageMessage" role="status"></p>
+      <div id="planCurrent"><p>Loading...</p></div>
+    </section>
+
+    <section>
+      <h2>Choose a plan</h2>
+      <p>Every plan lets you sell. A paid plan just lets you keep more listings live at once. Sold-out items never count. Cancel any time.</p>
+      <div id="planChoices" class="plan-grid"></div>
+    </section>
+
+    <section id="planListingsSection" style="display:none;">
+      <h2>Choose which listings stay live</h2>
+      <p>You have more listings than your plan allows. Tick the ones buyers should see. The rest are hidden, never deleted, and you can change this any time.</p>
+      <div id="planListings"></div>
+      <p id="planChosenCount" class="plan-chosen"></p>
+      <button id="planSaveChoiceBtn" type="button">Save my choice</button>
+    </section>
+
+  </div>
+
+  <p class="support-help" style="margin:24px 0;font-size:14px;color:#5b6b62;">Questions about billing? Email <a href="mailto:support@lesovia.com">support@lesovia.com</a>.</p>
+
+<script type="module" src="../js/app.js"></script>
+</body>
+</html>

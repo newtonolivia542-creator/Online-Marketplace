@@ -61,6 +61,10 @@ import {
 // to whichever of its elements the current page has.
 import "./phoneAuth.js";
 
+// Seller plans: the plan page, the dashboard usage line, and the check that
+// runs before a new listing is uploaded.
+import { loadPlanPage, loadPlanSummary, sellerHasRoomForListing } from "./plans.js";
+
 import {
   buyerReturnHtml,
   sellerReturnHtml,
@@ -368,6 +372,8 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     if (role === "seller") {
+      loadPlanSummary();
+      loadPlanPage();
       loadSellerProducts();
       loadSellerReturnsPage();
       loadSellerOrders();
@@ -417,6 +423,10 @@ if (productForm) {
 
     const fileInput = document.getElementById("pImage");
     const files = fileInput.files;
+
+    // A new listing needs room under the seller's live-listing limit. The server
+    // enforces it too; this just says so before the photos are uploaded.
+    if (!editingProductId && !(await sellerHasRoomForListing())) return;
 
     let imageURLs = [];
 
@@ -1091,6 +1101,9 @@ async function loadProducts() {
       product.quantity !== undefined &&
       product.quantity <= 0
     ) return;
+
+    // Hidden because the seller is over their plan's live-listing limit
+    if (product.hiddenByPlan === true) return;
   
     allProducts.push({
       id: docSnap.id,
@@ -2308,6 +2321,7 @@ function loadSellerProducts() {
       <p>${product.description}</p>
       <span>$${product.price}</span>
 
+      ${product.hiddenByPlan === true ? '<p><span class="badge badge-danger">🔒 Hidden from buyers: over your plan limit</span> <a href="seller-plan.html">Choose what stays live</a></p>' : ""}
       <p><span class="badge ${stockBadgeClass}">${stockBadgeText}</span></p>
       <p class="seller-product-stats">📦 ${totalUploaded} uploaded &nbsp;|&nbsp; 🛒 ${totalSold} sold</p>
 
@@ -2573,6 +2587,12 @@ await addDoc(collection(db, "messages"), {
     if (!docSnap.exists()) return alert("Product not found");
 
     const product = docSnap.data();
+
+    if (product.hiddenByPlan === true) {
+      alert("This item is no longer available.");
+      window.location.href = "buyer dashboard.html";
+      return;
+    }
 
     /*productImages = product.images && product.images.length > 0
       ? product.images
@@ -2886,6 +2906,8 @@ if (window.location.pathname.includes("shop.html")) {
 
       // Same "hide out of stock" rule the main storefront grid uses.
       if (product.quantity !== undefined && product.quantity <= 0) return;
+
+      if (product.hiddenByPlan === true) return; // over the seller's plan limit
 
       hasAnyInStock = true;
 

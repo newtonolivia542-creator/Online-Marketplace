@@ -126,6 +126,7 @@ export const PAGE_ROLE = {
   "seller-profile.html": "seller",
   "seller-history.html": "seller",
   "seller-returns.html": "seller",
+  "seller-plan.html": "seller",
   "seller-notifications.html": "seller",
   "seller-reviews.html": "seller"
 };
@@ -200,4 +201,28 @@ export function phoneAuthErrorMessage(err) {
   };
 
   return messages[code] || "Something went wrong. Please try again.";
+}
+
+
+// ---- seller plans ----
+
+// "$20" / "$19.99" for a price in cents.
+export function planPrice(cents) {
+  return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
+}
+
+// "15 live listings" / "Unlimited listings" for a limit (null = unlimited).
+export function listingLimitText(limit) {
+  if (limit === null || limit === undefined) return "Unlimited listings";
+
+  return `${limit} live listing${limit === 1 ? "" : "s"}`;
+}
+
+// "Nov 1, 2027" in US Central, which is where the free-year change happens.
+export function planDateText(iso) {
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
 }

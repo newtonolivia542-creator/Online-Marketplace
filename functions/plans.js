@@ -531,6 +531,7 @@ module.exports = {
   endpoint,
   notify,
   loadPlanDoc,
+  ensureCustomer,
   stripeClient,
   withStripe,
   originOf,

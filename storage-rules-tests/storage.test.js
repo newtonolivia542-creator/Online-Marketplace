@@ -72,3 +72,30 @@ test("return photos: only the buyer and the named seller can read them", async (
   denied(await download("seller2", PATH));
   denied(await download(null, PATH));
 });
+
+test("partner banner images: anyone can read, but nobody can write from a client", async () => {
+  const path = "partners/spot0000000000000001/image-abc.png";
+
+  // The server (Admin SDK) stores the image; the emulator accepts "Bearer owner" for that.
+  const boundary = "lesoviaBoundary";
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ name: path, contentType: "image/png" })}\r\n--${boundary}\r\nContent-Type: image/png\r\n\r\n`),
+    Buffer.alloc(10, 1),
+    Buffer.from(`\r\n--${boundary}--`),
+  ]);
+
+  const stored = await fetch(`${BASE}?name=${encodeURIComponent(path)}`, {
+    method: "POST",
+    headers: { Authorization: "Bearer owner", "Content-Type": `multipart/related; boundary=${boundary}`, "X-Goog-Upload-Protocol": "multipart" },
+    body,
+  });
+
+  ok(stored);
+
+  ok(await download(null, path));
+  ok(await download("buyer1", path));
+
+  denied(await upload("seller1", "partners/spot0000000000000002/image.png", { type: "image/png" }));
+  denied(await upload("admin1", "partners/spot0000000000000003/image.png", { type: "image/png" }));
+  denied(await upload(null, "partners/spot0000000000000004/image.png", { type: "image/png" }));
+});

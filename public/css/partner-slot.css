@@ -1,0 +1,29 @@
+/* ===== Paid advertisement slot (homepage, buyer dashboard and seller dashboard only) =====
+   Class names say "partner" on purpose: ad blockers hide anything named
+   ad / banner / sponsor. The label text buyers read is "Advertisement". */
+.lv-partner-slot { display: none; }
+.lv-partner-slot.lv-partner-live { display: block; max-width: 1200px; margin: 18px auto; padding: 0 20px; box-sizing: border-box; }
+
+.lv-partner-link { position: relative; display: block; border-radius: 12px; overflow: hidden; border: 1px solid #dfe6e2; text-decoration: none; }
+
+.lv-partner-img { display: block; width: 100%; aspect-ratio: 4 / 1; object-fit: cover; background: #f2f5f3; }
+
+.lv-partner-label {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #3d4a43;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+@media screen and (max-width: 700px) {
+  .lv-partner-slot.lv-partner-live { margin: 12px 0; padding: 0 12px; }
+  .lv-partner-img { aspect-ratio: 3 / 1; }
+  .lv-partner-label { font-size: 13px; }
+}

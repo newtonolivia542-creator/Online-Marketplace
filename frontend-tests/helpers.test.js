@@ -129,3 +129,45 @@ test("promoted listings: arrangeListings lifts at most one in four, keeps everyt
   assert.deepEqual(h.arrangeListings([], NOW), []);
   assert.deepEqual(h.arrangeListings(null, NOW), []);
 });
+
+
+test("seller insights: the page needs a seller; change and price-position text read plainly", () => {
+  assert.equal(h.requiredRoleForPage("/seller-insights.html"), "seller");
+
+  assert.equal(h.percentChangeText(50), "▲ 50% vs last month");
+  assert.equal(h.percentChangeText(-25), "▼ 25% vs last month");
+  assert.equal(h.percentChangeText(0), "same as last month");
+  assert.equal(h.percentChangeText(null), "");
+  assert.equal(h.percentChangeText(undefined), "");
+
+  assert.equal(h.pricePositionText({ position: "above", diffPct: 100 }), "100% above similar listings");
+  assert.equal(h.pricePositionText({ position: "below", diffPct: -20 }), "20% below similar listings");
+  assert.equal(h.pricePositionText({ position: "in_line", diffPct: 3 }), "In line with similar listings");
+  assert.equal(h.pricePositionText({ position: "not_enough_data" }), "Not enough similar listings yet");
+});
+
+
+test("partner banners: which spot shows where, and which links are safe", () => {
+  const NOW = Date.parse("2026-11-20T18:00:00Z");
+  const mk = (id, extra = {}) => ({ id, status: "active", startsAtMs: NOW - 1000, endsAtMs: NOW + 1000, placements: ["home"], ...extra });
+
+  assert.equal(h.partnerSpotState(mk("a"), NOW), "live");
+  assert.equal(h.partnerSpotState(mk("a", { status: "paused" }), NOW), "paused");
+  assert.equal(h.partnerSpotState(mk("a", { startsAtMs: NOW + 1 }), NOW), "scheduled");
+  assert.equal(h.partnerSpotState(mk("a", { endsAtMs: NOW - 1 }), NOW), "ended");
+  assert.equal(h.partnerSpotState(null, NOW), "paused");
+
+  const spots = [mk("b"), mk("a"), mk("c", { placements: ["buyer"] }), mk("d", { status: "paused" }), mk("e", { endsAtMs: NOW - 1 })];
+
+  assert.equal(h.pickPartnerSpot(spots, "home", NOW, 0).id, "a");
+  assert.equal(h.pickPartnerSpot(spots, "home", NOW, 0.99).id, "b");
+  assert.equal(h.pickPartnerSpot(spots, "buyer", NOW, 0.4).id, "c");
+  assert.equal(h.pickPartnerSpot(spots, "checkout", NOW, 0.4), null, "no spot ever shows in checkout");
+  assert.equal(h.pickPartnerSpot([], "home", NOW), null);
+  assert.equal(h.pickPartnerSpot(null, "home", NOW), null);
+
+  assert.equal(h.safePartnerLink("https://acme.example.com/sale"), "https://acme.example.com/sale");
+  for (const bad of ["http://acme.example.com", "javascript:alert(1)", "https://u:p@acme.example.com", "https://localhost", "nope", "", null]) {
+    assert.equal(h.safePartnerLink(bad), null, String(bad));
+  }
+});

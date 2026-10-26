@@ -127,6 +127,7 @@ export const PAGE_ROLE = {
   "seller-history.html": "seller",
   "seller-returns.html": "seller",
   "seller-plan.html": "seller",
+  "seller-insights.html": "seller",
   "seller-notifications.html": "seller",
   "seller-reviews.html": "seller"
 };
@@ -283,4 +284,65 @@ export function arrangeListings(products, nowMs = Date.now(), seed = 0) {
   }
 
   return out;
+}
+
+
+// ---- seller insights ----
+
+// "▲ 50% vs last month" / "▼ 25% vs last month" / "" when there's nothing to compare.
+export function percentChangeText(pct) {
+  if (pct === null || pct === undefined || Number.isNaN(pct)) return "";
+  if (pct === 0) return "same as last month";
+
+  return `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}% vs last month`;
+}
+
+// How a listing's price sits against similar listings, in plain words.
+export function pricePositionText(row) {
+  if (row.position === "not_enough_data") return "Not enough similar listings yet";
+
+  const gap = Math.abs(row.diffPct);
+
+  if (row.position === "above") return `${gap}% above similar listings`;
+  if (row.position === "below") return `${gap}% below similar listings`;
+
+  return "In line with similar listings";
+}
+
+
+// ---- partner banners (advertising) ----
+
+// A partner spot's state right now: 'paused' | 'scheduled' | 'live' | 'ended'.
+// Same rule as the server (functions/partnerMath.js); both dates are in the
+// document as milliseconds, with the last day already extended to its end.
+export function partnerSpotState(spot, nowMs = Date.now()) {
+  if (!spot || spot.status !== "active") return "paused";
+  if (nowMs < spot.startsAtMs) return "scheduled";
+  if (nowMs > spot.endsAtMs) return "ended";
+
+  return "live";
+}
+
+// The spot to show in a placement ("home" or "buyer"): one at random among those
+// live there. `rand` can be passed for tests.
+export function pickPartnerSpot(spots, placement, nowMs = Date.now(), rand = Math.random()) {
+  const live = (Array.isArray(spots) ? spots : [])
+    .filter((spot) => Array.isArray(spot.placements) && spot.placements.includes(placement) && partnerSpotState(spot, nowMs) === "live")
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  if (live.length === 0) return null;
+
+  return live[Math.min(live.length - 1, Math.floor(rand * live.length))];
+}
+
+// An https link with a real host and no credentials -- the same test the server
+// applies when a spot is saved, checked again before a link is put on the page.
+export function safePartnerLink(value) {
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "https:" && !url.username && !url.password && url.hostname.includes(".") ? url.toString() : null;
+  } catch (err) {
+    return null;
+  }
 }

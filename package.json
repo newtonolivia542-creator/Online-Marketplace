@@ -6,9 +6,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:rules": "firebase emulators:exec --only firestore,storage --project demo-lesovia \"node --test firestore-rules-tests/rules.test.js storage-rules-tests/storage.test.js\"",
-    "test:functions": "cd functions && node --test paymentMath.test.js orderDocs.test.js webhookPatches.test.js returnMath.test.js planMath.test.js promoMath.test.js",
+    "test:functions": "cd functions && node --test paymentMath.test.js orderDocs.test.js webhookPatches.test.js returnMath.test.js planMath.test.js promoMath.test.js insightsMath.test.js partnerMath.test.js",
     "test:frontend": "node --test frontend-tests/helpers.test.js",
-    "test:plans": "firebase emulators:exec --only firestore --project demo-lesovia \"cd functions && node --test --test-concurrency=1 plans.emulator.test.js promotions.emulator.test.js\""
+    "test:plans": "firebase emulators:exec --only firestore --project demo-lesovia \"cd functions && node --test --test-concurrency=1 plans.emulator.test.js promotions.emulator.test.js insights.emulator.test.js partners.emulator.test.js\""
   },
   "repository": {
     "type": "git",

@@ -294,6 +294,41 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Partner banners (advertising). partnerSpots is the public part -- the image,
+    // link, dates and placements the public pages need -- so anyone may read it,
+    // but only Cloud Functions write it. The advertiser's email, price, notes and
+    // invoice, the view/click counts, and the rate-limit counters are server-only.
+    match /partnerSpots/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /partnerSpotsPrivate/{id} {
+      allow read, write: if false;
+    }
+
+    match /partnerStats/{id} {
+      allow read, write: if false;
+    }
+
+    match /partnerLimits/{id} {
+      allow read, write: if false;
+    }
+
+    // Seller Insights: the subscription, the AI summaries used each month, and the
+    // last AI summary. Cloud Functions only; the page reads through endpoints.
+    match /sellerInsights/{uid} {
+      allow read, write: if false;
+    }
+
+    match /insightsUsage/{id} {
+      allow read, write: if false;
+    }
+
+    match /insightsReports/{uid} {
+      allow read, write: if false;
+    }
+
     // Marks which "your free listings are changing" reminders were already
     // sent. Cloud Functions only.
     match /planNotices/{key} {

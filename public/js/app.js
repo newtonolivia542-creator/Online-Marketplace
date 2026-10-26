@@ -73,6 +73,13 @@ import { loadPlanPage, loadPlanSummary, sellerHasRoomForListing } from "./plans.
 // the return from Stripe checkout.
 import "./promotions.js";
 
+// Seller Insights: the paid business-numbers page and the dashboard tile.
+import { loadInsightsPage, loadInsightsSummary } from "./insights.js";
+
+// Partner banners: shows the live advertisement on the homepage and the buyer
+// dashboard (nowhere else -- never checkout, the cart or a seller page).
+import "./partners.js";
+
 import {
   buyerReturnHtml,
   sellerReturnHtml,
@@ -382,6 +389,8 @@ onAuthStateChanged(auth, async (user) => {
     if (role === "seller") {
       loadPlanSummary();
       loadPlanPage();
+      loadInsightsSummary();
+      loadInsightsPage();
       loadSellerProducts();
       loadSellerReturnsPage();
       loadSellerOrders();

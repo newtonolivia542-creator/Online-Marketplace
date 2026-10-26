@@ -1361,7 +1361,10 @@ async function handleStripeEvent(stripe, event) {
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
     case "invoice.payment_failed":
-      return plans.handlePlanEvent(stripe, event);
+      // Listing-plan and Insights subscriptions share these events; each handler
+      // ignores the other's (by its subscription metadata).
+      await plans.handlePlanEvent(stripe, event);
+      return insights.handleInsightsEvent(stripe, event);
 
     // A seller paid for a promoted listing.
     case "checkout.session.completed":
@@ -2073,6 +2076,8 @@ exports.sendNotificationEmail = onDocumentCreated(
 const returns = require("./returns");
 const plans = require("./plans");
 const promotions = require("./promotions");
+const insights = require("./insights");
+const partners = require("./partners");
 
 exports.previewReturn = returns.previewReturn;
 exports.requestReturn = returns.requestReturn;
@@ -2111,6 +2116,31 @@ exports.promotionStatus = promotions.promotionStatus;
 exports.promoteListing = promotions.promoteListing;
 exports.syncPromotion = promotions.syncPromotion;
 exports.sweepPromotionReminders = promotions.sweepPromotionReminders;
+
+// =================================
+// SELLER INSIGHTS (paid business numbers + AI summary)
+// =================================
+// Math and tier rules in insightsMath.js, data/billing/AI in insights.js. The
+// subscription events arrive through handleStripeEvent above.
+exports.insightsStatus = insights.insightsStatus;
+exports.getInsights = insights.getInsights;
+exports.chooseInsights = insights.chooseInsights;
+exports.setInsightsCancel = insights.setInsightsCancel;
+exports.syncInsights = insights.syncInsights;
+exports.insightsSummary = insights.insightsSummary;
+
+// =================================
+// PARTNER BANNERS (advertising sold directly to businesses)
+// =================================
+// Rules in partnerMath.js, admin tools / uploads / invoices / counting in
+// partners.js. Named "partner" throughout so ad blockers leave it alone.
+exports.savePartnerSpot = partners.savePartnerSpot;
+exports.deletePartnerSpot = partners.deletePartnerSpot;
+exports.listPartnerSpots = partners.listPartnerSpots;
+exports.uploadPartnerImage = partners.uploadPartnerImage;
+exports.sendPartnerInvoice = partners.sendPartnerInvoice;
+exports.checkPartnerInvoice = partners.checkPartnerInvoice;
+exports.partnerEvent = partners.partnerEvent;
 
 // =================================
 // ACCOUNT RECOVERY BY PHONE

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/lesovia.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Partner Banners | Lesovia Admin</title>
+  <link rel="stylesheet" href="../css/admin.css">
+  <link rel="icon" type="image/svg+xml" href="../images/lesovia-mark.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="../images/lesovia-favicon-32.png">
+  <link rel="apple-touch-icon" href="../images/lesovia-touch-icon.png">
+  <style>
+    /* Hidden until admin.js confirms the admin login -- see admin.js */
+    body { visibility: hidden; }
+  </style>
+</head>
+<body>
+
+<h1>Partner Banners</h1>
+<button id="logoutBtn">Logout</button>
+<button class="btn btn-secondary admin-back-btn" onclick="window.location.href='admin.html'">Back</button>
+
+<div class="partner-admin">
+
+  <section class="partner-panel">
+    <h2 id="partnerFormTitle">New banner</h2>
+    <p class="partner-help">
+      A banner is shown on the <strong>homepage</strong>, the <strong>buyer dashboard</strong> and/or the
+      <strong>seller dashboard</strong>, marked "Advertisement". It never appears at checkout, in the cart,
+      or on any other seller page.
+      Use an image about <strong>1200 x 300 pixels</strong> (PNG, JPEG or WebP, under 1.5 MB) and keep the words large and near the middle,
+      because phones show it smaller.
+    </p>
+
+    <form id="partnerForm" autocomplete="off">
+      <label for="partnerName">Advertiser's name</label>
+      <input id="partnerName" type="text" maxlength="80" required>
+
+      <label for="partnerLink">Where the banner links to (full https:// address)</label>
+      <input id="partnerLink" type="url" placeholder="https://" required>
+
+      <label for="partnerImageFile">Banner image</label>
+      <input id="partnerImageFile" type="file" accept="image/png,image/jpeg,image/webp">
+      <p id="partnerImageNote" class="partner-help"></p>
+      <img id="partnerImagePreview" class="partner-preview" alt="" style="display:none;">
+
+      <fieldset class="partner-places">
+        <legend>Where it shows</legend>
+        <label><input type="checkbox" name="placement" value="home" checked> Homepage</label>
+        <label><input type="checkbox" name="placement" value="buyer" checked> Buyer dashboard</label>
+        <label><input type="checkbox" name="placement" value="seller"> Seller dashboard</label>
+      </fieldset>
+
+      <div class="partner-row">
+        <div>
+          <label for="partnerStart">First day</label>
+          <input id="partnerStart" type="date" required>
+        </div>
+        <div>
+          <label for="partnerEnd">Last day (included)</label>
+          <input id="partnerEnd" type="date" required>
+        </div>
+        <div>
+          <label for="partnerStatus">Status</label>
+          <select id="partnerStatus">
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="partner-help">Dates use Central time. The banner starts at midnight on the first day and runs through the end of the last day.</p>
+
+      <h3>Private details (buyers never see these)</h3>
+
+      <div class="partner-row">
+        <div>
+          <label for="partnerEmail">Advertiser's email (for the invoice)</label>
+          <input id="partnerEmail" type="email">
+        </div>
+        <div>
+          <label for="partnerPrice">Price ($)</label>
+          <input id="partnerPrice" type="number" min="0" max="10000" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+
+      <label for="partnerNotes">Notes</label>
+      <textarea id="partnerNotes" rows="2" maxlength="500"></textarea>
+
+      <p id="partnerFormMessage" role="status" class="partner-message"></p>
+
+      <button id="partnerSaveBtn" type="submit" class="btn btn-primary">Save banner</button>
+      <button id="partnerCancelBtn" type="button" class="btn btn-secondary" style="display:none;">Cancel editing</button>
+    </form>
+  </section>
+
+  <section class="partner-panel">
+    <h2>Your banners</h2>
+    <p id="partnerListMessage" role="status" class="partner-message"></p>
+    <div id="partnerList"><p>Loading...</p></div>
+  </section>
+
+</div>
+
+<script type="module" src="../js/admin.js"></script>
+<script type="module" src="../js/partners-admin.js"></script>
+</body>
+</html>

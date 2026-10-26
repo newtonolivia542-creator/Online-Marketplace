@@ -79,6 +79,15 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Partner banner images: path is partners/{spotId}/{fileName}. Publicly
+    // readable (the banner shows on public pages); nobody can write from a client
+    // -- the admin uploads through a Cloud Function, which checks the admin and
+    // the file before storing it.
+    match /partners/{spotId}/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Deny everything else by default.
     match /{allPaths=**} {
       allow read, write: if false;

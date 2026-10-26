@@ -556,3 +556,46 @@ test("products: a seller can't give their own listing a promotion", async () => 
   denied(await as("seller1").update("products/p1", { price: 6, promotedUntil: new Date("2099-01-01") }), "smuggled in an edit");
   ok(await as("seller1").update("products/p1", { price: 6 }));
 });
+
+// ---------------------------------------------------------------- insights
+test("insights: subscriptions, AI usage and saved summaries are server-only", async () => {
+  await reset(); await seedPeople();
+  await seed("sellerInsights/seller1", { tier: "pro", status: "active" });
+  await seed("insightsUsage/seller1_2026-11", { used: 1 });
+  await seed("insightsReports/seller1", { text: "private summary" });
+
+  for (const path of ["sellerInsights/seller1", "insightsUsage/seller1_2026-11", "insightsReports/seller1"]) {
+    for (const uid of ["seller1", "seller2", "admin1"]) {
+      denied(await as(uid).get(path), `${uid} get ${path}`);
+      denied(await as(uid).update(path, { tier: "pro", used: 0 }), `${uid} update ${path}`);
+      denied(await as(uid).delete(path), `${uid} delete ${path}`);
+    }
+    denied(await as("seller1").create(path.split("/")[0] + "/new", { tier: "pro" }), `create in ${path}`);
+  }
+});
+
+// ---------------------------------------------------------- partner banners
+test("partner banners: the public part is readable by anyone and writable by no client; everything private is server-only", async () => {
+  await reset(); await seedPeople();
+  await seed("partnerSpots/spot0000000000000001", { advertiserName: "Acme", linkUrl: "https://acme.example.com/", status: "active" });
+  await seed("partnerSpotsPrivate/spot0000000000000001", { advertiserEmail: "owner@acme.example.com", priceCents: 15000 });
+  await seed("partnerStats/spot0000000000000001_20261110", { views: 3 });
+  await seed("partnerLimits/abc", { count: 1 });
+
+  // Public document: anyone can read (the homepage is public).
+  for (const uid of [null, "buyer1", "seller1", "admin1"]) ok(await as(uid).get("partnerSpots/spot0000000000000001"), `${uid} read`);
+
+  // ...but nobody writes it from a browser, not even an admin or the advertiser.
+  for (const uid of [null, "buyer1", "seller1", "admin1"]) {
+    denied(await as(uid).update("partnerSpots/spot0000000000000001", { status: "paused" }), `${uid} update`);
+    denied(await as(uid).delete("partnerSpots/spot0000000000000001"), `${uid} delete`);
+    denied(await as(uid).create("partnerSpots/new0000000000000001", { advertiserName: "x" }), `${uid} create`);
+  }
+
+  for (const path of ["partnerSpotsPrivate/spot0000000000000001", "partnerStats/spot0000000000000001_20261110", "partnerLimits/abc"]) {
+    for (const uid of [null, "buyer1", "seller1", "admin1"]) {
+      denied(await as(uid).get(path), `${uid} get ${path}`);
+      denied(await as(uid).update(path, { views: 99 }), `${uid} update ${path}`);
+    }
+  }
+});

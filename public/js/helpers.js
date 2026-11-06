@@ -346,3 +346,63 @@ export function safePartnerLink(value) {
     return null;
   }
 }
+
+
+// ---- coming back to where you were after logging in ----
+
+// Pages anyone may be sent back to after logging in, whatever their role. (A page
+// that needs a particular role is allowed only for that role -- see PAGE_ROLE.)
+export const PUBLIC_RETURN_PAGES = ["shop.html", "product-detail.html"];
+
+// Accepts only a page on Lesovia itself and returns it as "/page.html?query", or
+// null. Anything else -- another website, //evil.com, javascript:, a path with
+// backslashes or control characters, a file that isn't a .html page -- is refused,
+// so a crafted login link can never forward someone to another site.
+export function safeReturnPath(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 500) return null;
+
+  if (/[\\\u0000-\u001f]/.test(value)) return null;
+
+  const base = "https://lesovia.invalid";
+  let url;
+
+  try {
+    url = new URL(value, base);
+  } catch (err) {
+    return null;
+  }
+
+  if (url.origin !== base) return null;
+
+  let path;
+
+  try {
+    path = decodeURIComponent(url.pathname);
+  } catch (err) {
+    return null;
+  }
+
+  if (!path.endsWith(".html") || path.includes("..")) return null;
+
+  return path + url.search;
+}
+
+// True for a storefront or product page: the pages a shopper logs in or registers from.
+export function isPublicReturnPath(path) {
+  if (typeof path !== "string") return false;
+
+  return PUBLIC_RETURN_PAGES.includes(path.split("?")[0].split("/").pop());
+}
+
+// Where to send someone who has just logged in. Back to the page they came from if
+// it is one their role is allowed on. A storefront or product page is for BUYERS: a
+// seller or admin who logged in from one goes to their own dashboard instead.
+export function loginDestination(role, redirectParam) {
+  const path = safeReturnPath(redirectParam);
+
+  if (path) {
+    if (isPublicReturnPath(path) ? role === "buyer" : requiredRoleForPage(path) === role) return path;
+  }
+
+  return homeForRole(role);
+}

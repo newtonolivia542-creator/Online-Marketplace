@@ -55,6 +55,9 @@ import {
   payoutLine,
   requiredRoleForPage,
   homeForRole,
+  safeReturnPath,
+  isPublicReturnPath,
+  loginDestination,
   isPromotedProduct,
   promotionState,
   arrangeListings,
@@ -118,6 +121,71 @@ window.addEventListener("pageshow", (event) => {
   }
 });
 
+/* ================= COMING BACK TO WHERE YOU WERE ================= */
+// A storefront (or other page) can send someone to login.html?redirect=... or
+// register.html?redirect=...; after logging in they are sent back there. Only
+// pages on Lesovia are accepted (see safeReturnPath), so a crafted link can't
+// forward anyone to another site.
+const RETURN_KEY = "lv-return-to";
+const RETURN_KEEP_MS = 3 * 24 * 60 * 60 * 1000;
+
+function returnPathFromUrl() {
+  const raw = new URLSearchParams(window.location.search).get("redirect");
+
+  return raw ? safeReturnPath(raw) : null;
+}
+
+// Registration needs an email check before the first login, and that email link
+// opens the homepage in a new tab, so the page to come back to is also kept in
+// this browser for a few days.
+function rememberReturnPath(path) {
+  try {
+    localStorage.setItem(RETURN_KEY, JSON.stringify({ path, at: Date.now() }));
+  } catch (err) { /* private mode: the redirect in the link still works */ }
+}
+
+function takeRememberedReturnPath() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RETURN_KEY) || "null");
+
+    localStorage.removeItem(RETURN_KEY);
+
+    return saved && Date.now() - saved.at < RETURN_KEEP_MS ? safeReturnPath(saved.path) : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// On the login and register pages, keep the destination when someone moves
+// between them, and preselect Buyer when they came from a storefront.
+(function carryReturnPath() {
+  const back = returnPathFromUrl();
+
+  if (!back) return;
+
+  const suffix = `?redirect=${encodeURIComponent(back)}`;
+
+  document.querySelectorAll('a[href="login.html"], a[href="register.html"]').forEach((link) => {
+    link.setAttribute("href", link.getAttribute("href") + suffix);
+  });
+
+  // Coming from a storefront or product page means a shopper is signing up: the
+  // account is always a buyer account, so the role choice is not offered.
+  const roleSelect = document.getElementById("role");
+
+  if (roleSelect && isPublicReturnPath(back)) {
+    roleSelect.value = "buyer";
+    roleSelect.style.display = "none";
+
+    const note = document.createElement("p");
+
+    note.className = "register-note";
+    note.textContent = "You're creating a buyer account, so you can shop at this store.";
+    note.style.cssText = "margin:0 0 16px; color:#3d4a43; font-size:15px;";
+    roleSelect.insertAdjacentElement("beforebegin", note);
+  }
+})();
+
 /* ================= REGISTER ================= */
 const registerForm = document.getElementById("registerForm");
 if (registerForm) {
@@ -127,7 +195,11 @@ if (registerForm) {
       document.getElementById("fullName").value;
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
-    const role = document.getElementById("role").value;
+    // A shopper who came from a storefront always gets a buyer account.
+    const storefrontReturn = returnPathFromUrl();
+    const role = storefrontReturn && isPublicReturnPath(storefrontReturn)
+      ? "buyer"
+      : document.getElementById("role").value;
 
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
@@ -166,7 +238,11 @@ if (registerForm) {
       "Welcome to Lesovia!\n\nWe've sent a verification email to your inbox.\n\nPlease verify your email before logging in."
       );
 
-      window.location.href = "login.html";
+      const back = returnPathFromUrl();
+
+      if (back) rememberReturnPath(back);
+
+      window.location.href = back ? `login.html?redirect=${encodeURIComponent(back)}` : "login.html";
       /*if (role === "seller") {
         window.location.href = "seller dashboard.html";
       } else if (role === "buyer") {
@@ -264,17 +340,14 @@ if (loginForm) {
         // visitor (e.g. clicking a notification-email link while signed out),
         // send them back to that exact page instead of just their dashboard --
         // but only if it's actually a page their role is allowed on.
+        // The page to come back to comes from the link, or, after a new
+        // registration, from what this browser remembered. loginDestination
+        // only ever returns a Lesovia page the person may use.
+        const remembered = takeRememberedReturnPath(); // always cleared, so it can't linger
         const redirectParam =
-          new URLSearchParams(window.location.search).get("redirect");
+          new URLSearchParams(window.location.search).get("redirect") || remembered;
 
-        const redirectTarget =
-          redirectParam ? decodeURIComponent(redirectParam) : null;
-
-        if (redirectTarget && requiredRoleForPage(redirectTarget) === role) {
-          window.location.href = redirectTarget;
-        } else {
-          window.location.href = homeForRole(role);
-        }
+        window.location.href = loginDestination(role, redirectParam);
       }
     } catch (err) {
       alert(err.message);
@@ -316,6 +389,11 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     const role = userDoc.data().role;
+
+    // The product page shows buying controls by role: see the ".hide-for-seller" and
+    // ".hide-for-admin" rules in product-detail.html.
+    document.body.classList.remove("role-buyer", "role-seller", "role-admin");
+    document.body.classList.add(`role-${role}`);
 //looking for user without a fullname//
     const userData = userDoc.data();
 
@@ -1691,7 +1769,14 @@ if(payBtn){
 
       } else if (finishedOrderIds[0]) {
 
-        window.location.href = `order.html?orderId=${finishedOrderIds[0]}`;
+        // order.html is the buyers' page; an admin who bought something looks it
+        // up under All Orders instead.
+        if (document.body.classList.contains("role-admin")) {
+          alert("Order placed. You can find it under All Orders.");
+          window.location.href = "admin-allorders.html";
+        } else {
+          window.location.href = `order.html?orderId=${finishedOrderIds[0]}`;
+        }
 
       }
 
@@ -2890,36 +2975,157 @@ loadReviews(productId);
   // ===== PRODUCT DETAIL LOGIC END =====
 
 // ===== SHOP PAGE (shop.html?sellerId=...) =====
-// Public, like product-detail.html -- no login required to browse a shop.
+// Public, like product-detail.html -- no login required to browse a shop. The
+// header offers Login / Register (sending the person back here afterwards) or,
+// when signed in, their dashboard, cart and Logout.
 if (window.location.pathname.includes("shop.html")) {
+
+  let shopProducts = [];
+  let shopName = "";
+
+  const shopEl = (id) => document.getElementById(id);
+
+  // The page to come back to after logging in or registering.
+  const shopReturn = () => encodeURIComponent(decodeURIComponent(window.location.pathname) + window.location.search);
+
+  function wireShopHeader() {
+    const nav = shopEl("shopNav");
+
+    if (!nav) return;
+
+    const welcome = shopEl("shopWelcome");
+
+    const signedOut = () => {
+      if (welcome) welcome.textContent = "";
+      nav.innerHTML = `
+        <a href="index.html">Home</a>
+        <a href="login.html?redirect=${shopReturn()}" class="login-btn">Login</a>
+        <a href="register.html?redirect=${shopReturn()}" class="register-btn">Register</a>`;
+      nav.style.visibility = "visible";
+    };
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return signedOut();
+
+      let profile = {};
+
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+
+        profile = snap.exists() ? snap.data() : {};
+      } catch (err) { /* the header still works without a name */ }
+
+      const name = profile.fullName || user.email || "";
+
+      if (welcome) welcome.textContent = name ? `Welcome, ${name}` : "";
+
+      nav.innerHTML = `
+        <a href="index.html">Home</a>
+        <a href="${escapeHtml(homeForRole(profile.role || "buyer"))}">My Dashboard</a>
+        ${profile.role === "buyer" ? '<a href="cart.html">Cart</a>' : ""}
+        <button id="shopLogoutBtn" type="button" class="logout-btn">Logout</button>`;
+
+      shopEl("shopLogoutBtn").addEventListener("click", async () => {
+        await signOut(auth);
+        window.location.reload(); // stay on this storefront, signed out
+      });
+
+      nav.style.visibility = "visible";
+    });
+  }
+
+  function renderShopProducts() {
+    const grid = shopEl("shopProductList");
+    const count = shopEl("shopCount");
+    const term = shopEl("shopSearchInput").value.trim().toLowerCase();
+
+    if (!grid) return;
+
+    if (shopProducts.length === 0) {
+      count.textContent = "";
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-glyph">🛍️</div>
+          <div><strong>This shop has no products in stock right now.</strong></div>
+        </div>`;
+      return;
+    }
+
+    const matches = term
+      ? shopProducts.filter((product) =>
+          [product.name, product.description, product.category, product.brand]
+            .some((field) => String(field || "").toLowerCase().includes(term)))
+      : shopProducts;
+
+    count.textContent = term
+      ? `${matches.length} ${matches.length === 1 ? "product" : "products"} matched`
+      : `${shopProducts.length} ${shopProducts.length === 1 ? "product" : "products"}`;
+
+    if (matches.length === 0) {
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-glyph">🔍</div>
+          <div><strong>No products in ${escapeHtml(shopName)} matched "${escapeHtml(term)}".</strong></div>
+          <div style="font-size:14px; margin-top:6px;">Try a different word, or clear the search.</div>
+        </div>`;
+      return;
+    }
+
+    grid.innerHTML = "";
+
+    matches.forEach((product) => {
+      const card = document.createElement("div");
+
+      card.classList.add("product-card");
+
+      card.innerHTML = `
+        <img
+          src="${escapeHtml(product.images ? product.images[0] : product.imageURL)}"
+          class="product-img"
+          alt="${escapeHtml(product.name)}"
+          style="cursor:pointer;"
+        >
+        <h3>${escapeHtml(product.name)}</h3>
+        <p class="price">$${escapeHtml(product.price)}</p>
+        <p class="desc">${escapeHtml(product.description)}</p>
+      `;
+
+      card.querySelector("img").addEventListener("click", () => {
+        window.location.href = `product-detail.html?id=${product.id}&from=index`;
+      });
+
+      grid.appendChild(card);
+    });
+  }
 
   async function loadShopPage() {
     const sellerId = new URLSearchParams(window.location.search).get("sellerId");
-    const grid = document.getElementById("shopProductList");
 
-    if (!sellerId) {
-      document.getElementById("shopName").innerText = "Shop not found";
-      return;
-    }
+    wireShopHeader();
+
+    const notFound = () => {
+      shopEl("shopName").innerText = "Shop not found";
+      shopEl("shopSearchForm").style.display = "none";
+    };
+
+    if (!sellerId) return notFound();
 
     const sellerSnap = await getDoc(doc(db, "users", sellerId));
 
-    if (!sellerSnap.exists() || sellerSnap.data().role !== "seller") {
-      document.getElementById("shopName").innerText = "Shop not found";
-      return;
-    }
+    if (!sellerSnap.exists() || sellerSnap.data().role !== "seller") return notFound();
 
     const seller = sellerSnap.data();
 
-    document.getElementById("shopName").innerText =
-      seller.storeName || "Unnamed Shop";
+    shopName = seller.storeName || "Unnamed Shop";
 
-    document.getElementById("shopDescription").innerText =
-      seller.storeDescription || "";
+    shopEl("shopName").innerText = shopName;
+    document.title = `${shopName} | Lesovia`;
+    shopEl("shopDescription").innerText = seller.storeDescription || "";
+    shopEl("shopSearchInput").placeholder = `Search in ${shopName}`;
 
     const { average, count } = await getShopRating(sellerId);
 
-    document.getElementById("shopRating").innerText = average
+    shopEl("shopRating").innerText = average
       ? `⭐ ${average} (${count} review${count === 1 ? "" : "s"})`
       : "No reviews yet";
 
@@ -2927,10 +3133,7 @@ if (window.location.pathname.includes("shop.html")) {
       query(collection(db, "products"), where("sellerId", "==", sellerId))
     );
 
-    if (!grid) return;
-    grid.innerHTML = "";
-
-    let hasAnyInStock = false;
+    shopProducts = [];
 
     productsSnap.forEach((docSnap) => {
       const product = docSnap.data();
@@ -2940,37 +3143,17 @@ if (window.location.pathname.includes("shop.html")) {
 
       if (product.hiddenByPlan === true) return; // over the seller's plan limit
 
-      hasAnyInStock = true;
-
-      const card = document.createElement("div");
-      card.classList.add("product-card");
-
-      card.innerHTML = `
-        <img
-          src="${product.images ? product.images[0] : product.imageURL}"
-          class="product-img"
-          style="cursor:pointer;"
-        >
-        <h3>${product.name}</h3>
-        <p class="price">$${product.price}</p>
-        <p class="desc">${product.description}</p>
-      `;
-
-      card.querySelector("img").addEventListener("click", () => {
-        window.location.href = `product-detail.html?id=${docSnap.id}&from=index`;
-      });
-
-      grid.appendChild(card);
+      shopProducts.push({ id: docSnap.id, ...product });
     });
 
-    if (!hasAnyInStock) {
-      grid.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-glyph">🛍️</div>
-          <div><strong>This shop has no products in stock right now.</strong></div>
-        </div>
-      `;
-    }
+    shopEl("shopSearchForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      renderShopProducts();
+    });
+
+    shopEl("shopSearchInput").addEventListener("input", renderShopProducts);
+
+    renderShopProducts();
   }
 
   loadShopPage();

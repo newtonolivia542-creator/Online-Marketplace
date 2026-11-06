@@ -1,0 +1,168 @@
+/* Seller storefront (shop.html). Header, buttons and cards match the homepage:
+   dark green header, green buttons, the shared product card. */
+
+body { margin: 0; }
+
+/* ---------- Header (same look as the homepage) ---------- */
+/* Three parts: logo on the left, the signed-in name centered, links on the right. */
+.navbar {
+  padding: 15px 5%;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.navbar .logo { justify-self: start; }
+
+.nav-center {
+  justify-self: center;
+  color: #e8f5ec;
+  font-weight: 600;
+  font-size: 18px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.nav-links { justify-self: end; }
+
+.navbar .logo { display: flex; align-items: center; text-decoration: none; }
+.navbar .logo img { width: 42px; height: 42px; object-fit: contain; margin-right: 10px; }
+
+.nav-links { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.nav-links a { text-decoration: none; font-weight: 500; color: #fff; }
+
+.nav-links .login-btn {
+  background: var(--lv-green);
+  color: #fff !important;
+  padding: 10px 18px;
+  border-radius: var(--lv-radius-sm);
+}
+
+.nav-links .register-btn {
+  border: 1px solid var(--lv-green-mist);
+  color: #fff !important;
+  padding: 9px 18px;
+  border-radius: var(--lv-radius-sm);
+}
+
+.logout-btn {
+  background: #c6362e;
+  color: #fff;
+  border: none;
+  border-radius: var(--lv-radius-sm);
+  padding: 10px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Store banner: name on the left, search on the right ---------- */
+.shop-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  background: var(--lv-surface, #fff);
+  padding: 26px 5%;
+  border-bottom: 1px solid var(--lv-line, #e3e8e5);
+}
+
+.shop-banner-info { flex: 1 1 320px; min-width: 0; }
+
+.shop-banner h1 {
+  margin: 0 0 6px;
+  padding: 0;
+  text-align: left;
+  font-size: 36px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.shop-rating-line { margin: 0 0 8px; color: #b7791f; font-weight: 600; }
+.shop-description { margin: 0; color: var(--lv-slate, #5b6b62); font-size: 17px; max-width: 60ch; }
+
+.shop-search { display: flex; gap: 10px; flex: 0 1 460px; width: 100%; }
+
+.shop-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 13px 14px;
+  font-size: 16px;
+  border: 1px solid var(--lv-line, #ccd5d0);
+  border-radius: var(--lv-radius-sm, 8px);
+  background: #fff;
+  color: var(--lv-ink);
+}
+
+.shop-search input:focus { outline: 2px solid var(--lv-green); outline-offset: 1px; }
+
+.shop-search-btn {
+  background: var(--lv-green);
+  color: #fff;
+  border: none;
+  border-radius: var(--lv-radius-sm, 8px);
+  padding: 13px 22px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.shop-search-btn:hover { background: var(--lv-green-deep); }
+
+/* ---------- Back link and result count ---------- */
+.shop-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 5% 6px;
+}
+
+.shop-back {
+  display: inline-block;
+  background: var(--lv-green);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: var(--lv-radius-sm, 8px);
+}
+
+.shop-back:hover { background: var(--lv-green-deep); }
+.shop-count { color: var(--lv-slate, #5b6b62); font-weight: 600; }
+
+/* ---------- Products ---------- */
+#shopProductList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 25px;
+  padding: 14px 5% 40px;
+}
+
+#shopProductList .product-card img { width: 100%; height: 200px; object-fit: cover; background: var(--lv-canvas); }
+#shopProductList .empty-state { grid-column: 1 / -1; }
+
+/* ---------- Phones ---------- */
+@media (max-width: 700px) {
+  .navbar { grid-template-columns: 1fr; justify-items: center; gap: 8px; padding: 12px 16px; }
+  .navbar .logo, .nav-links { justify-self: center; }
+  .nav-links { justify-content: center; gap: 12px; }
+  .nav-links a, .logout-btn { min-height: 44px; display: inline-flex; align-items: center; font-size: 17px; }
+  .nav-center { font-size: 17px; }
+  .nav-center:empty { display: none; }
+
+  .shop-banner { padding: 18px 16px; }
+  .shop-banner h1 { font-size: 30px; }
+  .shop-search { flex-basis: 100%; }
+  .shop-search input, .shop-search-btn { min-height: 50px; font-size: 17px; }
+
+  .shop-toolbar { padding: 14px 16px 4px; flex-wrap: wrap; }
+  .shop-back { min-height: 44px; display: inline-flex; align-items: center; font-size: 17px; }
+
+  #shopProductList { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; gap: 12px; }
+  #shopProductList .product-card img { height: 140px; }
+}

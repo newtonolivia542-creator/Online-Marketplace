@@ -21,6 +21,13 @@
   <link rel="icon" type="image/svg+xml" href="../images/lesovia-mark.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="../images/lesovia-favicon-32.png">
   <link rel="apple-touch-icon" href="../images/lesovia-touch-icon.png">
+  <style>
+    /* app.js puts role-buyer, role-seller or role-admin on <body> for a signed-in
+       person. Buying and messaging the seller are for buyers; an admin may also
+       Buy Now; a seller has none of them. */
+    .role-seller .hide-for-seller { display: none !important; }
+    .role-admin .hide-for-admin { display: none !important; }
+  </style>
 </head>
 <body>
   <header class="navbar">
@@ -88,20 +95,26 @@
     <p>In Stock:
       <span id="detailQuantityAvailable"></span>
     </p>
-    <label for="detailQuantity">Quantity:</label>
-    <input type="number" id="detailQuantity" value="1" min="1">
-    <br><br>
+    <!-- Who sees what (see the role rules above): buyers see everything; an admin can
+         Buy Now but can't add to a cart or message the seller; a seller sees none of it. -->
+    <div class="hide-for-seller">
+      <label for="detailQuantity">Quantity:</label>
+      <input type="number" id="detailQuantity" value="1" min="1">
+      <br><br>
+    </div>
 
-    <button id="addToCartBtn">Add to Cart</button>
-    <button id="buyBtn">
+    <button id="addToCartBtn" class="hide-for-seller hide-for-admin">Add to Cart</button>
+    <button id="buyBtn" class="hide-for-seller">
       Buy Now
-  </button>
+    </button>
 
-    <h3>Contact Seller</h3>
+    <div class="hide-for-seller hide-for-admin">
+      <h3>Contact Seller</h3>
 
-    <textarea id="messageInput" placeholder="Write a message..." rows="3"></textarea>
-    <br><br>
-    <button id="sendMessageBtn">Send Message</button>
+      <textarea id="messageInput" placeholder="Write a message..." rows="3"></textarea>
+      <br><br>
+      <button id="sendMessageBtn">Send Message</button>
+    </div>
   </div>
   <div class="reviews-section">
   <!--<h3>Customer Reviews</h3>-->
@@ -118,7 +131,7 @@
     Back to Store
   </button>
 
-  <button onclick="window.location.href='cart.html'">
+  <button class="hide-for-seller hide-for-admin" onclick="window.location.href='cart.html'">
     View My Cart
   </button>
 

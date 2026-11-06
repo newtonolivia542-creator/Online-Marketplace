@@ -171,3 +171,54 @@ test("partner banners: which spot shows where, and which links are safe", () => 
     assert.equal(h.safePartnerLink(bad), null, String(bad));
   }
 });
+
+
+test("login return: only pages on Lesovia itself are accepted", () => {
+  assert.equal(h.safeReturnPath("/shop.html?sellerId=abc123"), "/shop.html?sellerId=abc123");
+  assert.equal(h.safeReturnPath("shop.html?sellerId=abc"), "/shop.html?sellerId=abc");
+  assert.equal(h.safeReturnPath("/seller dashboard.html"), "/seller dashboard.html", "a page name with a space, as the app uses");
+  assert.equal(h.safeReturnPath("/seller%20dashboard.html"), "/seller dashboard.html");
+  assert.equal(h.safeReturnPath("/seller-orders.html?orderId=o1"), "/seller-orders.html?orderId=o1");
+  assert.equal(h.safeReturnPath("/../x.html"), "/x.html", "dot segments are flattened by the URL rules and stay on this site");
+
+  for (const bad of [
+    "https://evil.example.com/shop.html", "http://lesovia.com/shop.html", "//evil.example.com/shop.html", "///evil.example.com/x.html",
+    "/\\evil.example.com/x.html", "\\\\evil.example.com\\x.html", "javascript:alert(1)", "data:text/html,hi", "/shop.html\n",
+    "/notapage", "/script.js", "", null, undefined, 42, "/" + "a".repeat(600) + ".html", "/%E0%A4%A.html"
+  ]) {
+    assert.equal(h.safeReturnPath(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("login return: a storefront is for buyers; a role's own pages only for that role; anything else goes home", () => {
+  const shop = "/shop.html?sellerId=abc123";
+
+  assert.equal(h.loginDestination("buyer", shop), shop, "a buyer goes back to the storefront");
+  assert.equal(h.loginDestination("seller", shop), "seller dashboard.html", "a seller who logs in from a storefront goes to their own dashboard");
+  assert.equal(h.loginDestination("admin", shop), "admin.html", "so does an admin");
+
+  assert.equal(h.loginDestination("buyer", "/product-detail.html?id=p1"), "/product-detail.html?id=p1");
+  assert.equal(h.loginDestination("seller", "/product-detail.html?id=p1"), "seller dashboard.html");
+
+  assert.equal(h.loginDestination("seller", "/seller-orders.html?orderId=o1"), "/seller-orders.html?orderId=o1");
+  assert.equal(h.loginDestination("buyer", "/seller-orders.html?orderId=o1"), "buyer dashboard.html", "wrong role -> own home");
+  assert.equal(h.loginDestination("buyer", "/order.html"), "/order.html");
+
+  assert.equal(h.loginDestination("buyer", null), "buyer dashboard.html");
+  assert.equal(h.loginDestination("seller", undefined), "seller dashboard.html");
+  assert.equal(h.loginDestination("admin", ""), "admin.html");
+
+  // an attempt to bounce someone to another site is ignored
+  assert.equal(h.loginDestination("buyer", "https://evil.example.com/shop.html"), "buyer dashboard.html");
+  assert.equal(h.loginDestination("seller", "//evil.example.com/seller-orders.html"), "seller dashboard.html");
+  assert.equal(h.loginDestination("buyer", "javascript:alert(1)"), "buyer dashboard.html");
+});
+
+test("login return: which pages count as storefront / product pages", () => {
+  assert.equal(h.isPublicReturnPath("/shop.html?sellerId=abc"), true);
+  assert.equal(h.isPublicReturnPath("/product-detail.html?id=p1"), true);
+  assert.equal(h.isPublicReturnPath("/seller-orders.html"), false);
+  assert.equal(h.isPublicReturnPath("/order.html"), false);
+  assert.equal(h.isPublicReturnPath(null), false);
+  assert.equal(h.isPublicReturnPath(""), false);
+});

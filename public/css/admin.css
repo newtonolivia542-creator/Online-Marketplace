@@ -339,6 +339,30 @@ li:last-child {
 .admin-accent-danger { border-top-color: var(--lv-danger, #C6362E); }
 .admin-accent-neutral{ border-top-color: var(--lv-slate-soft, #8A968F); }
 
+/* ================= PHONES: the control panel =================
+   Two bigger cards per row, with text sized to read comfortably. */
+@media (max-width: 700px) {
+  body { padding: 12px; }
+
+  .admin-hero { margin: 20px 0 18px; }
+  .admin-hero h1 { font-size: 28px; }
+  .admin-hero p { font-size: 16px; }
+
+  .admin-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .admin-nav-card { padding: 18px 14px; }
+  .admin-nav-icon { font-size: 34px; margin-bottom: 8px; }
+  .admin-nav-card h3 { font-size: 18px; overflow-wrap: anywhere; }
+  .admin-nav-card p { font-size: 14px; line-height: 1.4; }
+
+  .admin-topbar #logoutBtn { float: none; min-height: 44px; padding: 8px 18px; font-size: 16px; }
+  .admin-welcome { font-size: 16px; }
+  .admin-email-sub { font-size: 13px; }
+}
+
 @media (max-width: 600px) {
   .admin-topbar {
     flex-direction: column;
@@ -413,4 +437,88 @@ li:last-child {
 @media (max-width: 700px) {
   .partner-card { grid-template-columns: 1fr; }
   .partner-thumb { width: 100%; }
+}
+
+/* =========================================================
+   PHONES: every admin page except the control panel hub
+   (the hub has its own block above). Bigger text and buttons,
+   tables become one small card per row, product lists two per row.
+   ========================================================= */
+@media (max-width: 700px) {
+  body { padding: 12px; font-size: 16px; }
+
+  h1 { font-size: 26px; margin: 8px 0 12px; }
+  h2 { font-size: 22px; margin-top: 24px; }
+
+  /* Logout / Back sit side by side under the title */
+  #logoutBtn { float: none; display: inline-block; margin: 0 8px 12px 0; min-height: 44px; padding: 8px 16px; font-size: 16px; }
+  .admin-back-btn { min-height: 44px; padding: 8px 16px; font-size: 16px; margin-bottom: 12px; }
+  .admin-topbar { padding: 14px 16px; margin-bottom: 18px; }
+  .admin-topbar #logoutBtn { margin: 0; }
+
+  .admin-stat-badge { display: block; text-align: center; padding: 12px; margin-bottom: 14px; font-size: 16px; }
+
+  /* 16px stops iPhone zooming in when a box is tapped */
+  .admin-search-input { max-width: none; font-size: 16px; padding: 12px 14px; margin-bottom: 14px; box-sizing: border-box; }
+  input, select, textarea { font-size: 16px; }
+
+  /* ---- Tables -> cards ---- */
+  table, tbody, tr, td { display: block; }
+  table { background: none; box-shadow: none; margin-top: 6px; }
+  thead { position: absolute; left: -9999px; top: 0; } /* labels come from data-label instead */
+  tr {
+    background: #fff;
+    border-radius: 12px;
+    padding: 6px 14px;
+    margin: 0 0 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  }
+  tr:hover { background: #fff; }
+  td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid #eee;
+    text-align: right;
+    font-size: 16px;
+    overflow-wrap: anywhere;
+  }
+  td:last-child { border-bottom: none; }
+  td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    max-width: 42%;
+    text-align: left;
+    font-weight: 600;
+    color: #5b6b62;
+    font-size: 14px;
+  }
+  td:not([data-label])::before { content: none; }
+  td[style*="background"]::before { color: inherit; } /* e.g. the coloured Delivery Time cell */
+  td button { min-height: 44px; min-width: 92px; font-size: 16px; }
+
+  /* ---- All Products ---- */
+  #adminProductGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .admin-product-card { padding: 10px; }
+  .admin-product-img { height: 130px; }
+  .admin-product-card h3 { font-size: 17px; overflow-wrap: anywhere; }
+  .admin-product-actions button { min-height: 44px; font-size: 16px; }
+
+  /* ---- Product detail ---- */
+  #adminProductDetail { margin: 12px 0; padding: 16px; }
+  .admin-detail-images { gap: 8px; }
+  .admin-detail-img { width: calc(50% - 4px); height: auto; aspect-ratio: 1 / 1; }
+  .admin-review-card { padding: 10px; gap: 10px; }
+  .admin-review-img { width: 56px; height: 56px; }
+
+  /* ---- Seller reviews ---- */
+  .admin-seller-section { padding: 14px; }
+
+  /* ---- Returns & refunds ---- */
+  .admin-returns-wrap { padding: 0 2px 24px; }
+  .admin-return-card { padding: 14px; }
+  .admin-return-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .admin-return-actions button { margin: 0; min-height: 44px; font-size: 16px; flex: 1 1 140px; }
 }

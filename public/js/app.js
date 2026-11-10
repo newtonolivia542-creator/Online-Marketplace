@@ -988,6 +988,27 @@ function renderCheckoutSummary(data) {
   box.appendChild(total);
 }
 
+// Shows the button as busy the instant it is tapped and ignores more taps
+// until the work finishes. Without this a slow network makes the tap look
+// ignored, people tap again, and every tap runs (duplicate cart items).
+async function runWithBusyButton(button, busyText, work) {
+  if (!button || button.dataset.busy === "1") return;
+
+  const original = button.innerText;
+
+  button.dataset.busy = "1";
+  button.disabled = true;
+  button.innerText = busyText;
+
+  try {
+    await work();
+  } finally {
+    button.dataset.busy = "";
+    button.disabled = false;
+    button.innerText = original;
+  }
+}
+
 async function startCheckout(items, cartItemIds, mode) {
   const user = auth.currentUser;
 
@@ -2306,9 +2327,16 @@ if (docSnap.id === selectedOrderId) {
 
 /* ================= LOAD SELLER PRODUCTS ================= */
 
+// If this is called again (the sign-in callback can fire more than once), the
+// old listener must stop -- two live listeners redrawing the same list at the
+// same time is one way a seller's list ends up partial.
+let stopSellerProductsListener = null;
+
 function loadSellerProducts() {
   const sellerProducts = document.getElementById("sellerProducts");
   if (!sellerProducts || !auth.currentUser) return;
+
+  if (stopSellerProductsListener) stopSellerProductsListener();
 
   const highlightProductId =
     new URLSearchParams(window.location.search).get("highlightProduct");
@@ -2336,33 +2364,51 @@ function loadSellerProducts() {
     where("sellerId", "==", auth.currentUser.uid)
   );
 
-  onSnapshot(q, async (snapshot) => {
+  stopSellerProductsListener = onSnapshot(q, async (snapshot) => {
     const myRenderId = ++renderId;
 
-    // Units sold through newer per-seller sub-orders, per product -- read
-    // once for the whole list rather than once per product.
-    const subOrderUnitsSold = new Map();
-    const subOrdersSnap = await getDocs(
-      query(collection(db, "sellerOrders"), where("sellerId", "==", auth.currentUser.uid))
-    );
+    // Units sold per product, read ONCE for the whole list. (This used to run
+    // one extra query per product, one after another -- with a few dozen
+    // products on a phone that was slow, and every product change restarted
+    // it, so the list looked partial while it rebuilt.) A failed read here
+    // must not stop the products from showing: counts just fall back to 0.
+    const unitsSold = new Map();
+
+    const addUnits = (productId, quantity) =>
+      unitsSold.set(productId, (unitsSold.get(productId) || 0) + (Number(quantity) || 0));
+
+    try {
+      // Newer per-seller sub-orders...
+      const subOrdersSnap = await getDocs(
+        query(collection(db, "sellerOrders"), where("sellerId", "==", auth.currentUser.uid))
+      );
+
+      subOrdersSnap.forEach(subOrderDoc => {
+        (subOrderDoc.data().products || []).forEach(orderedProduct => {
+          addUnits(orderedProduct.productId, orderedProduct.quantity);
+        });
+      });
+
+      // ...and older one-product orders.
+      const ordersSnap = await getDocs(
+        query(collection(db, "orders"), where("sellerId", "==", auth.currentUser.uid))
+      );
+
+      ordersSnap.forEach(orderDoc => {
+        addUnits(orderDoc.data().productId, orderDoc.data().quantity);
+      });
+    } catch (countErr) {
+      console.error("Could not load sold counts:", countErr);
+    }
 
     if (myRenderId !== renderId) return; // a newer firing has already taken over
 
-    subOrdersSnap.forEach(subOrderDoc => {
-      (subOrderDoc.data().products || []).forEach(orderedProduct => {
-        subOrderUnitsSold.set(
-          orderedProduct.productId,
-          (subOrderUnitsSold.get(orderedProduct.productId) || 0) + (Number(orderedProduct.quantity) || 0)
-        );
-      });
-    });
-
-    // Only clear the list once we know we're actually about to repopulate it
-    // -- clearing any earlier would flash the list empty even when this
-    // firing turns out to be the one that gets superseded.
-    sellerProducts.innerHTML = "";
+    // Build the whole list off-screen, then swap it in at once, so the seller
+    // never sees a half-built list.
+    const fragment = document.createDocumentFragment();
 
     for (const docSnap of snapshot.docs) {
+     try {
       const product = docSnap.data();
 
     const quantity =
@@ -2384,24 +2430,9 @@ function loadSellerProducts() {
         stockBadgeText = `⚠️ Only ${quantity} left`;
       }
 
-      // Total sold = sum of quantity across every order ever placed for
-      // this product. Orders only ever exist after a successful payment
-      // (see verifyPayment), so this is an accurate historical count even
-      // if the product has since been restocked.
-      const ordersSnap = await getDocs(
-        query(
-          collection(db, "orders"),
-          where("productId", "==", docSnap.id),
-          where("sellerId", "==", auth.currentUser.uid)
-        )
-      );
-
-      if (myRenderId !== renderId) return; // abandon mid-loop too, same reason as above
-
-      let totalSold = subOrderUnitsSold.get(docSnap.id) || 0;
-      ordersSnap.forEach(orderDoc => {
-        totalSold += Number(orderDoc.data().quantity) || 0;
-      });
+      // Total sold = every order ever placed for this product (orders only
+      // exist after a successful payment), summed once above.
+      const totalSold = unitsSold.get(docSnap.id) || 0;
 
       // "Uploaded" = how many units were originally listed. Tracked
       // directly for products created after originalQuantity existed;
@@ -2478,7 +2509,7 @@ function loadSellerProducts() {
       nextBtn.style.display = "none";
     }
 
-      sellerProducts.appendChild(productDiv);
+      fragment.appendChild(productDiv);
 
       if (!hasHighlighted && docSnap.id === highlightProductId) {
         hasHighlighted = true;
@@ -2492,7 +2523,22 @@ function loadSellerProducts() {
           }, 5000);
         }, 300);
       }
+     } catch (cardErr) {
+      // One product with odd data must not stop the ones after it.
+      console.error("Could not show product", docSnap.id, cardErr);
+     }
     }
+
+    if (snapshot.empty) {
+      const none = document.createElement("p");
+      none.textContent = "You have not uploaded any products yet.";
+      fragment.appendChild(none);
+    }
+
+    sellerProducts.replaceChildren(fragment);
+  }, (listenErr) => {
+    console.error("Could not load your products:", listenErr);
+    sellerProducts.innerHTML = "<p>We could not load your products. Please refresh the page.</p>";
   });
 }
 //======New Edit Function ===========//
@@ -2805,7 +2851,7 @@ const addToCartBtn = document.getElementById("addToCartBtn");
 
 if (addToCartBtn) {
 
-    addToCartBtn.addEventListener("click", async () => {
+    addToCartBtn.addEventListener("click", () => runWithBusyButton(addToCartBtn, "Adding...", async () => {
 
         const user = auth.currentUser;
 
@@ -2895,14 +2941,14 @@ if (addToCartBtn) {
 
         }
 
-    });
+    }));
 }
 //july 24, 2026//
 const buyBtn = document.getElementById("buyBtn");
 
 if (buyBtn) {
 
-    buyBtn.addEventListener("click", async () => {
+    buyBtn.addEventListener("click", () => runWithBusyButton(buyBtn, "Please wait...", async () => {
 
         const productSnap = await getDoc(
             doc(db, "products", productId)
@@ -2944,8 +2990,6 @@ if (buyBtn) {
 
         // The server re-fetches this product's real price/stock from
         // Firestore -- this is just what the buyer says they want to buy.
-        buyBtn.disabled = true;
-
         await startCheckout(
             [
                 {
@@ -2959,9 +3003,7 @@ if (buyBtn) {
             "buyNow"
         );
 
-        buyBtn.disabled = false;
-
-    });
+    }));
 
 }
 
@@ -3419,7 +3461,7 @@ const checkoutBtn = document.getElementById("checkoutBtn");
 
 if (checkoutBtn) {
 
-  checkoutBtn.addEventListener("click", async () => {
+  checkoutBtn.addEventListener("click", () => runWithBusyButton(checkoutBtn, "Please wait...", async () => {
 
     const user = auth.currentUser;
 
@@ -3453,13 +3495,9 @@ if (checkoutBtn) {
 
     const cartItemIds = selectedItems.map(item => item.cartItemId);
 
-    checkoutBtn.disabled = true;
-
     await startCheckout(items, cartItemIds, "cart");
 
-    checkoutBtn.disabled = false;
-
-  });
+  }));
 
 }
 

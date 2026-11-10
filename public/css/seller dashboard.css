@@ -637,21 +637,28 @@ label{
 
   #soldProducts, #sellerMessages { margin: 14px 12px; padding: 16px; }
 
-  /* Listings: one card per row, readable text, big Edit/Delete */
+  /* Listings: two cards per row, text still easy to read, big Edit/Delete */
   #my-listings { margin: 0 12px; }
-  #sellerProducts { grid-template-columns: 1fr; gap: 16px; }
-  #sellerProducts div { padding: 14px; font-size: 17px; }
+  #sellerProducts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #sellerProducts > div { padding: 10px; font-size: 15px; overflow-wrap: anywhere; }
+  #sellerProducts > div p { margin: 6px 0; line-height: 1.35; }
+  #sellerProducts > div div { padding: 0; box-shadow: none; } /* nested boxes: give the picture the full card width */
+  #sellerProducts > div > p:nth-of-type(1) {
+    /* description: keep cards even by showing about three lines */
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
   #sellerProducts img,
-  .image-slider img { height: 220px; }
-  #sellerProducts .btn-group { display: flex; gap: 10px; padding: 0; box-shadow: none; background: none; }
-  #sellerProducts .btn-group button { flex: 1; min-height: 52px; font-size: 18px; font-weight: 700; }
+  .image-slider img { height: 130px; }
+  #sellerProducts .btn-group { display: flex; gap: 8px; padding: 0; box-shadow: none; background: none; }
+  #sellerProducts .btn-group button { flex: 1; min-height: 44px; font-size: 15px; font-weight: 700; padding: 6px; }
 
-  /* No hover on a phone: picture arrows are always visible and big */
+  /* No hover on a phone: picture arrows are always visible (small, so they fit a half-width card) */
   .image-slider button {
     opacity: 1;
-    min-width: 44px;
-    min-height: 44px;
-    font-size: 20px;
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 14px;
+    padding: 0;
   }
 
   /* Reviews / orders / messages */
